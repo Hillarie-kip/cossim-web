@@ -8,6 +8,7 @@ import {
   UploadCloud,
   RefreshCw,
   Layers,
+  Eye,
   Search,
   ArrowLeft,
   X,
@@ -334,6 +335,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [mobileConsolidatedOpen, setMobileConsolidatedOpen] = useState(false);
   const [detailItems, setDetailItems] = useState([]);
   const [detailHistory, setDetailHistory] = useState([]);
   const [detailDataLoading, setDetailDataLoading] = useState(false);
@@ -929,6 +931,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const handleConsolidate = () => openBatchPanel("dispatch");
 
   const openSelectedMobilePanel = () => {
+    if (activeTask === "dispatch" && !selectedRowKeys.length) {
+      setMobileConsolidatedOpen(true);
+      return;
+    }
     if (!selectedRowKeys.length) return;
     if (isReceiveTask) {
       openReceivePanels(inboundBatches.filter((batch) => selectedRowKeys.includes(batch.HandoverCode)));
@@ -937,7 +943,11 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (activeTask === "confirmed") return openBatchPanel("confirmed");
     if (activeTask === "reversed") return openBatchPanel("reversed");
     if (activeTask === "forwardReverse") return openBatchPanel("forwardReverse");
-    if (activeTask === "dispatch") return openBatchPanel("dispatch");
+    if (activeTask === "dispatch" && selectedOrdersForActions.length === 1) {
+      setDetailOrder(selectedOrdersForActions[0]);
+      setMobileDetailOpen(true);
+      return;
+    }
     if (selectedOrdersForActions.length === 1) {
       setDetailOrder(selectedOrdersForActions[0]);
       setMobileDetailOpen(true);
@@ -2547,7 +2557,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   return <article className={`packages-mobile-card ${selected ? "is-selected" : ""}`} key={recordKey}>
                     <div className="packages-mobile-card-head">
                       <label className="packages-mobile-card-select">
-                        <input type="checkbox" className="form-check-input" checked={selected} onChange={(event) => setSelectedRowKeys((current) => event.target.checked ? [...new Set([...current, recordKey])] : current.filter((key) => key !== recordKey))} />
+                        <input type="checkbox" className="form-check-input" checked={selected} onChange={(event) => setSelectedRowKeys((current) => event.target.checked ? (activeTask === "dispatch" ? [recordKey] : [...new Set([...current, recordKey])]) : current.filter((key) => key !== recordKey))} />
                         <span>Select</span>
                       </label>
                       <span className="packages-mobile-card-status">{isReceiveTask ? `${Number(record._ReceivedItems || 0)}/${totalItems} received` : getDisplayText(record.StatusName || record.TaskManagementStatus)}</span>
@@ -2665,9 +2675,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </div>
               </> : <div className="packages-detail-empty"><span className="packages-detail-empty-icon" aria-hidden="true">›</span><strong>RECEIVE</strong><small>CLICK A BATCH</small></div>}
             </aside>}
-            {activeTask === "dispatch" && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className="packages-detail-panel packages-consolidated-panel is-open" style={{ width: detailPanelWidth }} aria-label="Consolidated batches">
+            {activeTask === "dispatch" && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className={`packages-detail-panel packages-consolidated-panel is-open ${mobileConsolidatedOpen ? "is-mobile-open" : ""}`} style={{ width: detailPanelWidth }} aria-label="Consolidated orders">
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
-              <header className="packages-detail-header"><div><small>ORDERS TO DISPATCH</small><h5>Consolidated Batches</h5></div></header>
+              <header className="packages-detail-header"><div><small>ORDERS TO DISPATCH</small><h5>Consolidated Orders</h5></div><button type="button" className="packages-mobile-panel-close" onClick={() => setMobileConsolidatedOpen(false)} aria-label="Close consolidated orders"><X size={19} /></button></header>
               <div className="packages-detail-body" style={{ padding: "12px" }}>
                 <div className="input-group input-group-sm mb-3">
                   <span className="input-group-text" aria-hidden="true"><Search size={15} /></span>
@@ -2695,9 +2705,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </> : <div className="text-center py-5 text-muted"><Layers size={28} className="mb-2" /><p className="mb-0">No consolidated batches awaiting action.</p></div>}
               </div>
             </aside>}
-            {selectedRowKeys.length > 0 && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={`Open actions for ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}`}>
-              <Layers size={20} />
-              <span>{selectedRowKeys.length} selected</span>
+            {((activeTask === "dispatch") || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={activeTask === "dispatch" ? (selectedRowKeys.length ? "Open details view" : "Open consolidated orders") : `Open actions for ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}`}>
+              {activeTask === "dispatch" && selectedRowKeys.length ? <Eye size={20} /> : <Layers size={20} />}
+              <span>{activeTask === "dispatch" ? (selectedRowKeys.length ? "Details View" : "Consolidated Orders") : `${selectedRowKeys.length} selected`}</span>
             </button>}
             {batchPanelMode && <aside className="packages-detail-panel is-open" style={{ width: detailPanelWidth }} aria-label={`${batchPanelMode} batch`}>
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
@@ -2959,6 +2969,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-table .ant-table-thead > tr > th:last-child,
         .packages-table .ant-table-tbody > tr > td:last-child { padding-right: 8px; border-right: 1px solid #f0d7c7; }
         .packages-mobile-selection-fab { display: none; }
+        .packages-mobile-panel-close { display: none; }
         .packages-mobile-cards { display: none; }
 
         .packages-filter-bar {
@@ -3440,7 +3451,21 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           .packages-mobile-pagination button:disabled { opacity: .45; }
           .packages-mobile-pagination span { color: #667085; font-size: 11px; font-weight: 700; }
           .packages-detail-panel.is-collapsed,
-          .packages-consolidated-panel { display: none; }
+          .packages-consolidated-panel:not(.is-mobile-open) { display: none; }
+          .packages-consolidated-panel.is-mobile-open {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            width: 100% !important;
+            max-width: none;
+            min-height: 100dvh;
+            height: 100dvh;
+            border: 0;
+            box-shadow: none;
+            z-index: 1100;
+          }
+          .packages-consolidated-panel.is-mobile-open .packages-detail-resizer { display: none; }
+          .packages-mobile-panel-close { display: inline-flex; }
           .packages-detail-panel.is-open:not(.packages-consolidated-panel) {
             position: fixed;
             inset: 0;
