@@ -627,7 +627,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         vendorStoreCode: formData.vendorStoreCode || '',
         deliveryTypeCode: formData.deliveryTypeCode,
         originDCCode: originDC,
-        destinationDCCode: null,
+        destinationDCCode: '',
         AddedBy:user?.UserCode,
         // Shipping rate and fees
         shipmentRateNO: shippingRate?.ShipmentRateNO || '',
