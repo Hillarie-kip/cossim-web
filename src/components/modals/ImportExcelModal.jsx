@@ -13,9 +13,10 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
   const [vendorParams, setVendorParams] = useState({});
   const { vendors, loading: vendorsLoading } = useVendors(vendorParams);
   
-  const { handleDownloadExcelTemplate, handleUploadExcel, loading: shipmentLoading } = useShipment();
+  const { deliveryTypes, handleDownloadExcelTemplate, handleUploadExcel, loading: shipmentLoading } = useShipment();
   
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [selectedDeliveryType, setSelectedDeliveryType] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [validationError, setValidationError] = useState('');
@@ -24,6 +25,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
   useEffect(() => {
     if (show) {
       setSelectedVendor(null);
+      setSelectedDeliveryType(null);
       setSelectedFile(null);
       setVendorParams({});
       setIsUploading(false);
@@ -55,11 +57,17 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
       notify.error('Please select an Excel file to upload');
       return;
     }
+
+    if (!selectedDeliveryType) {
+      notify.error('Please select a delivery type');
+      return;
+    }
     
     const vendorCode = showVendorInput ? selectedVendor.value : user?.AssignedVendor?.VendorCode;
     
     const formData = new FormData();
     formData.append('VendorCode', vendorCode);
+    formData.append('DeliveryTypeCode', selectedDeliveryType.value);
     formData.append('file', selectedFile);
     
     try {
@@ -142,6 +150,22 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
             </Form.Group>
           )}
 
+          <Form.Group className="mb-3">
+            <Form.Label>Delivery Type <span className="text-danger">*</span></Form.Label>
+            <Select
+              name="selectedDeliveryType"
+              value={selectedDeliveryType}
+              onChange={setSelectedDeliveryType}
+              options={Array.isArray(deliveryTypes) ? deliveryTypes.map((type) => ({
+                value: type.DeliveryTypeCode,
+                label: type.DeliveryTypeName,
+              })) : []}
+              placeholder="Select delivery type..."
+              isClearable
+              isSearchable
+            />
+          </Form.Group>
+
           <Form.Group className="mb-4">
             <Form.Label>Upload Filled Template <span className="text-danger">*</span></Form.Label>
             <div className="custom-file-upload border rounded p-4 text-center bg-light">
@@ -169,7 +193,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
             <Button 
               variant="primary" 
               type="submit" 
-              disabled={isUploading || !selectedFile || (showVendorInput && !selectedVendor)}
+              disabled={isUploading || !selectedFile || !selectedDeliveryType || (showVendorInput && !selectedVendor)}
               className="d-inline-flex align-items-center justify-content-center"
               style={{ minWidth: '170px' }}
             >

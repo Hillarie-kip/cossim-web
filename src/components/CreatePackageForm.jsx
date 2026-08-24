@@ -1,6 +1,6 @@
 "use client";
 ///@ts-check
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Package, User, MapPin, Plus, Trash2 } from "feather-icons-react";
 import { Form, Row, Col, Card, Button, Alert, Spinner, Modal, Tabs, Tab } from 'react-bootstrap';
@@ -17,6 +17,27 @@ import { useAuth } from '@/contexts/AuthContext';
 import PaymentStep from '@/components/PaymentStep';
 import '@/style/css/create-package.css';
 import notify from '@/lib/toast';
+
+const loadGooglePlaces = () => {
+  if (window.google?.maps?.places) return Promise.resolve(true);
+  if (window.__cossimGooglePlacesPromise) return window.__cossimGooglePlacesPromise;
+  const key = String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '').trim();
+  if (!key) return Promise.resolve(false);
+  window.__cossimGooglePlacesPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.cossimGoogleMaps = 'true';
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error('Google Places could not be loaded.'));
+    document.head.appendChild(script);
+  });
+  return window.__cossimGooglePlacesPromise;
+};
+
+const getPlacePart = (place, type) =>
+  place.address_components?.find((part) => part.types.includes(type))?.long_name || '';
 
 const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput = false, embedded = false, onClose, onComplete }) => {
   const route = all_routes;
@@ -128,11 +149,47 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const receiverStreetRef = useRef(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [shippingRate, setShippingRate] = useState(null);
   const [rateCalculating, setRateCalculating] = useState(false);
   const [orderItems, setOrderItems] = useState([]);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+
+  useEffect(() => {
+    if (!receiverStreetRef.current) return undefined;
+    let active = true;
+    let listener;
+
+    loadGooglePlaces().then((placesAvailable) => {
+      if (!placesAvailable || !active || !receiverStreetRef.current) return;
+      const autocomplete = new window.google.maps.places.Autocomplete(receiverStreetRef.current, {
+        componentRestrictions: { country: 'ke' },
+        fields: ['address_components', 'formatted_address', 'geometry', 'name'],
+        types: ['geocode'],
+      });
+
+      listener = autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        if (!place.geometry?.location) return;
+        setFormData((current) => ({
+          ...current,
+          receiverStreetName: place.formatted_address || place.name || current.receiverStreetName,
+          receiverCity: getPlacePart(place, 'locality') || getPlacePart(place, 'administrative_area_level_2') || current.receiverCity,
+          receiverArea: getPlacePart(place, 'sublocality_level_1') || getPlacePart(place, 'neighborhood') || current.receiverArea,
+          receiverPostalCode: getPlacePart(place, 'postal_code') || current.receiverPostalCode,
+          receiverLatitude: String(place.geometry.location.lat()),
+          receiverLongitude: String(place.geometry.location.lng()),
+        }));
+        setValidationErrors((current) => ({ ...current, receiverCity: '' }));
+      });
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+      if (listener) window.google?.maps?.event?.removeListener(listener);
+    };
+  }, []);
 
   // Product selection state
   const [itemEntryMode, setItemEntryMode] = useState('manual'); // 'manual' or 'select'
@@ -338,21 +395,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     }
   };
 
-  const handleDestinationDCChange = (selectedOption) => {
-    setFormData(prev => ({
-      ...prev,
-      destinationDCCode: selectedOption ? selectedOption.value : ''
-    }));
-
-    // Clear validation error
-    if (validationErrors.destinationDCCode) {
-      setValidationErrors(prev => ({
-        ...prev,
-        destinationDCCode: ''
-      }));
-    }
-  };
-
   const handleNewItemChange = (e) => {
     const { name, value, type, checked } = e.target;
     setNewItemData(prev => ({
@@ -495,10 +537,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     if (!formData.originDCCode && !showVendorInput && !user?.AssignedVendor?.DefaultDCCode) {
       errors.originDCCode = 'Origin distribution center is required';
     }
-    if (!formData.destinationDCCode) {
-      errors.destinationDCCode = 'Destination distribution center is required';
-    }
-
     // Terms and conditions
     if (!formData.agreeToTerms) {
       errors.agreeToTerms = 'You must agree to the terms and conditions';
@@ -589,7 +627,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         vendorStoreCode: formData.vendorStoreCode || '',
         deliveryTypeCode: formData.deliveryTypeCode,
         originDCCode: originDC,
-        destinationDCCode: formData.destinationDCCode,
+        destinationDCCode: null,
         AddedBy:user?.UserCode,
         // Shipping rate and fees
         shipmentRateNO: shippingRate?.ShipmentRateNO || '',
@@ -985,48 +1023,20 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           {validationErrors.receiverCity}
                         </Form.Control.Feedback>
                       </Col>
-                      <Col md={6} className="mb-3">
-                        <Form.Label>Destination DC Code *</Form.Label>
-                        <Select
-                          name="destinationDCCode"
-                          value={dcOptions.find(option => option.value === formData.destinationDCCode) || null}
-                          onChange={handleDestinationDCChange}
-                          options={dcOptions}
-                          placeholder="Select destination DC..."
-                          isClearable
-                          isSearchable
-                          className={validationErrors.destinationDCCode ? 'is-invalid' : ''}
-                          styles={{
-                            control: (provided, state) => ({
-                              ...provided,
-                              backgroundColor: '#F5E6D8',
-                              borderColor: validationErrors.destinationDCCode ? '#dc3545' : provided.borderColor,
-                              '&:hover': {
-                                borderColor: validationErrors.destinationDCCode ? '#dc3545' : provided.borderColor,
-                              },
-                            }),
-                          }}
-                        />
-                        {validationErrors.destinationDCCode && (
-                          <div className="invalid-feedback d-block">
-                            {validationErrors.destinationDCCode}
-                          </div>
-                        )}
-                        <Form.Text className="text-muted">
-                          Distribution center code for the delivery location
-                        </Form.Text>
-                      </Col>
+                      
                     </Row>
 
                     <Row>
                       <Col md={6} className="mb-3">
                         <Form.Label>Area/Street</Form.Label>
                         <Form.Control
+                          ref={receiverStreetRef}
                           type="text"
                           name="receiverStreetName"
-                          placeholder="Area/Street"
+                          placeholder="Search for a street or place"
                           value={formData.receiverStreetName}
                           onChange={handleInputChange}
+                          autoComplete="off"
                           style={{ backgroundColor: '#F5E6D8' }}
                         />
                       </Col>
@@ -1369,12 +1379,10 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           ? formData.selectedVendor?.vendor?.DCName
                           : user?.AssignedVendor?.DCName);
 
-                        const destDC = formData.destinationDCCode;
-                        
-                        if (originDC && destDC) {
-                          return `${originDCName || originDC} → ${formData.receiverCity || destDC}`;
+                        if (originDC && formData.receiverCity) {
+                          return `${originDCName || originDC} → ${formData.receiverCity}`;
                         } else if (originDC) {
-                          return `${originDCName || originDC} → Enter destination DC`;
+                          return originDCName || originDC;
                         } else {
                           return 'Route will be determined';
                         }
