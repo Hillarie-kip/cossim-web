@@ -1,6 +1,6 @@
 "use client";
 ///@ts-check
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Package, User, MapPin, Plus, Trash2 } from "feather-icons-react";
 import { Form, Row, Col, Card, Button, Alert, Spinner, Modal, Tabs, Tab } from 'react-bootstrap';
@@ -23,9 +23,14 @@ import { getSelectedDC } from '@/services/dcService';
 const loadGooglePlaces = () => {
   if (window.google?.maps?.places) return Promise.resolve(true);
   if (window.__cossimGooglePlacesPromise) return window.__cossimGooglePlacesPromise;
-  const key = String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '').trim();
-  if (!key) return Promise.resolve(false);
-  window.__cossimGooglePlacesPromise = new Promise((resolve, reject) => {
+  window.__cossimGooglePlacesPromise = new Promise(async (resolve, reject) => {
+    let key = String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '').trim();
+    if (!key) {
+      const configResponse = await fetch('/api/google-maps-config', { cache: 'no-store' });
+      if (!configResponse.ok) throw new Error('Google Maps is not configured in this environment.');
+      key = String((await configResponse.json()).apiKey || '').trim();
+    }
+    if (!key) throw new Error('Google Maps API key is missing.');
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
     script.async = true;
@@ -63,6 +68,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     loading: rateLoading,
     error: rateError,
     fetchActiveShipmentRate,
+    shipmentRates,
+    fetchShipmentRates,
   } = useFinance();
 
   const {
@@ -154,6 +161,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const [formStep, setFormStep] = useState(0);
   const [roadDistance, setRoadDistance] = useState(null);
   const [roadDistanceStatus, setRoadDistanceStatus] = useState('idle');
+  const [placesStatus, setPlacesStatus] = useState('loading');
+  const [selectedPriceZoneID, setSelectedPriceZoneID] = useState('');
   const receiverStreetRef = useRef(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [shippingRate, setShippingRate] = useState(null);
@@ -168,6 +177,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
     loadGooglePlaces().then((placesAvailable) => {
       if (!placesAvailable || !active || !receiverStreetRef.current) return;
+      setPlacesStatus('ready');
       const autocomplete = new window.google.maps.places.Autocomplete(receiverStreetRef.current, {
         componentRestrictions: { country: 'ke' },
         fields: ['address_components', 'formatted_address', 'geometry', 'name'],
@@ -188,7 +198,9 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         }));
         setValidationErrors((current) => ({ ...current, receiverCity: '' }));
       });
-    }).catch(() => {});
+    }).catch((placesError) => {
+      if (active) setPlacesStatus(placesError.message || 'Google Places suggestions are unavailable.');
+    });
 
     return () => {
       active = false;
@@ -282,6 +294,22 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     label: `${dc.DCName} (${dc.DCCode})`
   }));
 
+  const activeVendorCode = formData.selectedVendor?.value || formData.selectedVendor?.vendor?.vendorCode || user?.AssignedVendor?.VendorCode || '';
+  const matchingPricingRates = useMemo(() => {
+    const activeRates = (Array.isArray(shipmentRates) ? shipmentRates : []).filter((rate) =>
+      Number(rate.StatusID ?? rate.statusID ?? 1) === 1 &&
+      String(rate.ShipmentRateSize ?? rate.shipmentRateSize ?? '').toUpperCase() === String(formData.shipmentSize || '').toUpperCase() &&
+      String(rate.DeliveryTypeCode ?? rate.deliveryTypeCode ?? '').toUpperCase() === String(formData.deliveryTypeCode || '').toUpperCase());
+    const vendorRates = activeRates.filter((rate) => String(rate.VendorCode ?? rate.vendorCode ?? '') === activeVendorCode);
+    return vendorRates.length ? vendorRates : activeRates.filter((rate) => !String(rate.VendorCode ?? rate.vendorCode ?? '').trim());
+  }, [shipmentRates, activeVendorCode, formData.shipmentSize, formData.deliveryTypeCode]);
+  const zonePricingOptions = useMemo(() => matchingPricingRates.filter((rate) => String(rate.PriceType ?? rate.priceType).toUpperCase() === 'ZONING').map((rate) => ({
+    value: String(rate.PriceZoneID ?? rate.priceZoneID),
+    label: `${rate.PriceZoneName ?? rate.priceZoneName ?? 'Price zone'} - KES ${Number(rate.RateAmount ?? rate.rateAmount ?? 0).toFixed(2)}`,
+  })).filter((option, index, options) => option.value && options.findIndex((candidate) => candidate.value === option.value) === index), [matchingPricingRates]);
+
+  useEffect(() => { setSelectedPriceZoneID(''); }, [activeVendorCode, formData.shipmentSize, formData.deliveryTypeCode]);
+
   // Note: GetVendorStoreModel declares PascalCase C# properties, so the API
   // returns PascalCase JSON keys here (unlike the vendor product DTO, which is camelCase).
   const storeOptions = vendorStores.map((store) => ({
@@ -293,11 +321,12 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   useEffect(() => {
     fetchDeliveryTypes();
     fetchDistributionCenters();
+    fetchShipmentRates();
   }, []);
 
   // Calculate shipping rate when route and delivery type are available
-  const calculateShippingRate = async (fromDC, toDC, deliveryType) => {
-    if (!fromDC || !toDC || !deliveryType) {
+  const calculateShippingRate = async (fromDC, toDC, deliveryType, shipmentRateSize, vendorCode, roadKM, priceZoneID) => {
+    if (!fromDC || !toDC || !deliveryType || !shipmentRateSize) {
       setShippingRate(null);
       return;
     }
@@ -307,14 +336,18 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       const rateParams = {
         fromDCCode: fromDC,
         toDCCode: toDC,
-        deliveryTypeCode: deliveryType
+        deliveryTypeCode: deliveryType,
+        shipmentRateSize,
+        vendorCode: vendorCode || undefined,
+        roadKM: roadKM ?? undefined,
+        priceZoneID: priceZoneID || undefined,
       };
 
       const response = await fetchActiveShipmentRate(rateParams);
       
       if (response?.Data) {
-        setShippingRate(response.Data);
-        notify.success(`Shipping rate calculated: KES ${response.Data.RateAmount}`);
+        const resolvedRate = { ...response.Data, RateAmount: response.Data.CalculatedAmount ?? response.Data.RateAmount };
+        setShippingRate(resolvedRate);
       } else {
         setShippingRate(null);
         notify.warning('No shipping rate found for this route and delivery type');
@@ -334,12 +367,17 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       : user?.AssignedVendor?.DefaultDCCode);
 
     // Use manually entered destination DC code
-    const toDC = formData.destinationDCCode;
+    const toDC = formData.destinationDCCode || formData.originDCCode || getSelectedDC();
     
     const deliveryType = formData.deliveryTypeCode;
+    const vendorCode = formData.selectedVendor?.value || user?.AssignedVendor?.VendorCode || '';
 
-    if (fromDC && toDC && deliveryType) {
-      calculateShippingRate(fromDC, toDC, deliveryType);
+    if (fromDC && toDC && deliveryType && formData.shipmentSize) {
+      if (!zonePricingOptions.length || selectedPriceZoneID) {
+        calculateShippingRate(fromDC, toDC, deliveryType, formData.shipmentSize, vendorCode, roadDistance?.kilometers, selectedPriceZoneID);
+      } else {
+        setShippingRate(null);
+      }
     } else {
       setShippingRate(null);
     }
@@ -349,6 +387,10 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     user?.AssignedVendor?.DefaultDCCode,
     formData.destinationDCCode,
     formData.deliveryTypeCode,
+    formData.shipmentSize,
+    roadDistance?.kilometers,
+    selectedPriceZoneID,
+    zonePricingOptions.length,
     showVendorInput
   ]);
 
@@ -379,10 +421,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
   // Fetch vendor stores when the vendor changes, and reset any previously
   // selected store since it belonged to a different vendor
-  const activeVendorCode = showVendorInput
-    ? formData.selectedVendor?.vendor?.vendorCode
-    : user?.AssignedVendor?.VendorCode;
-
   useEffect(() => {
     if (activeVendorCode) {
       setVendorStoresParams({
@@ -652,11 +690,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       errors.additionalFeeAmount = 'Additional fee amount must be a valid positive number';
     }
 
-    // Vendor selection validation (if required)
-    if (showVendorInput && !formData.selectedVendor) {
-      errors.selectedVendor = 'Please select a vendor';
-    }
-
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -665,7 +698,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     const errors = {};
 
     if (formStep === 0) {
-      if (showVendorInput && !formData.selectedVendor) errors.selectedVendor = 'Please select a vendor';
       if (!formData.originDCCode && !user?.AssignedVendor?.DefaultDCCode) errors.originDCCode = 'Sorting area is required';
     } else if (formStep === 1) {
       if (!formData.receiverContactName.trim()) errors.receiverContactName = 'Receiver contact name is required';
@@ -674,6 +706,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       if (!formData.deliveryTypeCode) errors.deliveryTypeCode = 'Delivery type is required';
     } else if (formStep === 2) {
       if (!formData.shipmentSize) errors.shipmentSize = 'Package size is required';
+      if (zonePricingOptions.length && !selectedPriceZoneID) errors.priceZoneID = 'Price zone is required';
       if (!orderItems.length) errors.orderItems = 'Please add at least one item to the package';
     }
 
@@ -730,6 +763,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         AddedBy:user?.UserCode,
         // Shipping rate and fees
         shipmentRateNO: shippingRate?.ShipmentRateNO || '',
+        priceZoneID: selectedPriceZoneID ? Number(selectedPriceZoneID) : null,
         serviceFee: shippingRate?.RateAmount || 0,
         additionalFee: additionalFee,
         
@@ -752,6 +786,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         senderContactEmail: formData.senderContactEmail || '',
         senderContactPhone: formData.senderContactPhone || '',
         shipmentSize: formData.shipmentSize || '',
+        roadKM: roadDistance?.kilometers ?? null,
         senderApartment: formData.senderApartment || '',
         senderArea: formData.senderArea || '',
         senderBuilding: formData.senderBuilding || '',
@@ -945,7 +980,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                    {/* Vendor Selection */}
                   {showVendorInput && (
                     <div className="mb-3">
-                      <Form.Label>Vendor*</Form.Label>
+                      <Form.Label>Vendor</Form.Label>
                       <Select
                         name="selectedVendor"
                         value={formData.selectedVendor}
@@ -964,7 +999,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           label: vendor.vendorName,
                           vendor: vendor
                         })) : []}
-                        placeholder="Search and select vendor..."
+                        placeholder="Walk-in / Default pricing"
                         isClearable
                         isSearchable
                         isLoading={vendorsLoading}
@@ -1119,7 +1154,9 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         <Form.Control.Feedback type="invalid">
                           {validationErrors.receiverStreetName}
                         </Form.Control.Feedback>
-                        <Form.Text className="place-search-hint">Powered by Google Places. Select a suggestion to calculate the driving distance.</Form.Text>
+                        <Form.Text className="place-search-hint">
+                          {placesStatus === 'ready' ? 'Powered by Google Places. Select a suggestion to calculate the driving distance.' : placesStatus === 'loading' ? 'Loading Google Places...' : placesStatus}
+                        </Form.Text>
                         {roadDistanceStatus === 'loading' && <div className="road-distance-chip loading"><Spinner size="sm" /> Calculating road distance...</div>}
                         {roadDistanceStatus === 'ready' && roadDistance && <div className="road-distance-chip"><MapPin size={13} /> {roadDistance.text} by road</div>}
                         {roadDistanceStatus !== 'idle' && roadDistanceStatus !== 'loading' && roadDistanceStatus !== 'ready' && (
@@ -1270,6 +1307,22 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     </div>
                     {validationErrors.shipmentSize && <div className="invalid-feedback d-block">{validationErrors.shipmentSize}</div>}
                   </div>
+
+                  {zonePricingOptions.length > 0 && (
+                    <div className="mb-4">
+                      <Form.Label>Price Zone *</Form.Label>
+                      <Select
+                        options={zonePricingOptions}
+                        value={zonePricingOptions.find((option) => option.value === selectedPriceZoneID) || null}
+                        onChange={(option) => setSelectedPriceZoneID(option?.value || '')}
+                        placeholder="Select the applicable price zone"
+                        isClearable
+                        isSearchable
+                      />
+                      <Form.Text>Select the zone band that applies to this receiver.</Form.Text>
+                      {validationErrors.priceZoneID && <div className="invalid-feedback d-block">{validationErrors.priceZoneID}</div>}
+                    </div>
+                  )}
 
 
                   {/* Cash on Delivery */}

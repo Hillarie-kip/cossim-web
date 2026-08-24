@@ -1,361 +1,62 @@
-import React, { useState, useEffect } from "react";
-import { Modal, Form, Button, Row, Col } from "react-bootstrap";
+import React, { useEffect } from "react";
+import { Modal, Form, Button, Row, Col, Table } from "react-bootstrap";
 import Select from "react-select";
-import DatePicker, { registerLocale, setDefaultLocale } from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import { enUS } from 'date-fns/locale/en-US';
 import PropTypes from "prop-types";
 import { useShipment } from "@/hooks/useShipment";
 import { useVendors } from "@/hooks/useVendors";
 
-// Register English locale (you can change this to your preferred locale)
-registerLocale('en-US', enUS);
+const valueOf = (item, ...keys) => keys.map((key) => item?.[key]).find((value) => value !== undefined && value !== null);
 
-// Set default locale for all date pickers
-setDefaultLocale('en-US');
-
-const AddRoutePricingModal = ({
-  show,
-  onHide,
-  formData,
-  onInputChange,
-  onSubmit,
-  loading = false,
-  priceZones = [],
-}) => {
-  // Hooks for fetching data
+const AddRoutePricingModal = ({ show, onHide, formData, onInputChange, onSubmit, loading = false, priceZones = [] }) => {
   const { deliveryTypes, fetchDeliveryTypes } = useShipment();
   const { vendors } = useVendors({ pageNo: 1, pageSize: 500 });
-
-  // Local state for select values
-  const [selectedDeliveryType, setSelectedDeliveryType] = useState(null);
-
-  // Local state for date pickers
-  const [effectiveFromDate, setEffectiveFromDate] = useState(null);
-  const [effectiveToDate, setEffectiveToDate] = useState(null);
-
-  // Fetch data on component mount
-  useEffect(() => {
-    if (show) {
-      fetchDeliveryTypes();
-    }
-  }, [show, fetchDeliveryTypes]);
-
-  // Update local state when formData changes
-  useEffect(() => {
-    // Ensure arrays are available before using find
-    if (!Array.isArray(deliveryTypes)) {
-      return;
-    }
-
-    const deliveryType = deliveryTypes.find(dt => dt.DeliveryTypeCode === formData.deliveryTypeCode);
-
-    setSelectedDeliveryType(deliveryType ? { value: deliveryType.DeliveryTypeCode, label: deliveryType.DeliveryTypeName } : null);
-
-    // Sync date picker state with formData
-    setEffectiveFromDate(formData.effectiveFrom ? new Date(formData.effectiveFrom + (formData.effectiveFrom.includes('T') ? '' : 'T00:00')) : null);
-    setEffectiveToDate(formData.effectiveTo ? new Date(formData.effectiveTo + (formData.effectiveTo.includes('T') ? '' : 'T00:00')) : null);
-  }, [formData, deliveryTypes]);
-
-  // Transform delivery types for select options
-  const deliveryTypeOptions = Array.isArray(deliveryTypes)
-    ? deliveryTypes
-        .filter(dt => dt.StatusID === 1) // Only active delivery types
-        .map(dt => ({
-          value: dt.DeliveryTypeCode,
-          label: dt.DeliveryTypeName,
-          deliveryTypeData: dt
-        }))
-    : [];
-  const vendorOptions = (Array.isArray(vendors) ? vendors : [])
-    .map((vendor) => {
-      const value = vendor.vendorCode ?? vendor.VendorCode;
-      const name = vendor.vendorName ?? vendor.VendorName;
-
-      return value ? { value, label: `${name || value} (${value})` } : null;
-    })
-    .filter(Boolean);
-  const priceZoneOptions = (Array.isArray(priceZones) ? priceZones : [])
-    .map((zone) => {
-      const value = zone.priceZoneID ?? zone.PriceZoneID ?? zone.priceZoneId;
-      const name = zone.zoneName ?? zone.ZoneName;
-      const dcCodes = zone.dcCodes ?? zone.DCCodes ?? [];
-
-      return value == null
-        ? null
-        : { value, label: `${name || `Zone ${value}`} (${dcCodes.length} DCs)` };
-    })
-    .filter(Boolean);
-  const sizeOptions = ['SMALL','MEDIUM','LARGE','EXTRA_LARGE'].map(value => ({ value, label: value.replace('_',' ') }));
-  const priceTypeOptions = [
-    { value: 'NEGOTIATED', label: 'Negotiated' }, { value: 'FIXED', label: 'Fixed' },
-    { value: 'PER_KM', label: 'Per KM' }, { value: 'ZONING', label: 'Zoning' }
-  ];
   const updateField = (name, value) => onInputChange({ target: { name, value } });
+  useEffect(() => { if (show) fetchDeliveryTypes(); }, [show, fetchDeliveryTypes]);
 
-  const handleDeliveryTypeChange = (selectedOption) => {
-    setSelectedDeliveryType(selectedOption);
-    onInputChange({
-      target: {
-        name: 'deliveryTypeCode',
-        value: selectedOption ? selectedOption.value : ''
-      }
-    });
-  };
+  const vendorOptions = [{ value: "", label: "Walk-in / Default pricing" }, ...(Array.isArray(vendors) ? vendors : []).map((vendor) => {
+    const value = valueOf(vendor, "vendorCode", "VendorCode");
+    const name = valueOf(vendor, "vendorName", "VendorName");
+    return value ? { value, label: `${name || value} (${value})` } : null;
+  }).filter(Boolean)];
+  const sizeOptions = ["SMALL", "MEDIUM", "LARGE"].map((value) => ({ value, label: value.charAt(0) + value.slice(1).toLowerCase() }));
+  const deliveryOptions = (Array.isArray(deliveryTypes) ? deliveryTypes : []).filter((item) => Number(valueOf(item, "StatusID", "statusID") ?? 1) === 1).map((item) => ({ value: valueOf(item, "DeliveryTypeCode", "deliveryTypeCode"), label: valueOf(item, "DeliveryTypeName", "deliveryTypeName") }));
+  const priceTypes = [{ value: "FIXED", label: "Fixed" }, { value: "ZONING", label: "Zone bands" }, { value: "PER_KM", label: "Per KM" }];
+  const zones = (Array.isArray(priceZones) ? priceZones : []).map((zone) => ({ id: Number(valueOf(zone, "PriceZoneID", "priceZoneID", "priceZoneId")), name: valueOf(zone, "ZoneName", "zoneName") || "Unnamed zone", dcCodes: valueOf(zone, "DCCodes", "dcCodes") || [] }));
+  const zonePrices = formData.zonePrices || {};
+  const canSubmit = formData.shipmentRateSize && formData.deliveryTypeCode && ((formData.priceType === "FIXED" && formData.rateAmount !== "") || (formData.priceType === "PER_KM" && formData.basePrice !== "" && formData.baseKM !== "" && formData.pricePerKM !== "") || (formData.priceType === "ZONING" && Object.values(zonePrices).some((value) => value !== "" && value !== null)));
 
-  // Handle date picker changes
-  const handleEffectiveFromChange = (date) => {
-    setEffectiveFromDate(date);
-    onInputChange({
-      target: {
-        name: 'effectiveFrom',
-        value: date ? formatLocalDateTime(date) : ''
-      }
-    });
-  };
-
-  const handleEffectiveToChange = (date) => {
-    setEffectiveToDate(date);
-    onInputChange({
-      target: {
-        name: 'effectiveTo',
-        value: date ? formatLocalDateTime(date) : ''
-      }
-    });
-  };
-
-  // Helper function to format date in local timezone
-  const formatLocalDateTime = (date) => {
-    if (!date) return '';
-    
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
-  // Reset selections when modal is hidden
-  useEffect(() => {
-    if (!show) {
-      setSelectedDeliveryType(null);
-      setEffectiveFromDate(null);
-      setEffectiveToDate(null);
-    }
-  }, [show]);
-  // Custom styles for react-select to match Bootstrap theme
-  const selectStyles = {
-    control: (base, state) => ({
-      ...base,
-      borderColor: state.isFocused ? '#80bdff' : '#ced4da',
-      boxShadow: state.isFocused ? '0 0 0 0.2rem rgba(0,123,255,.25)' : 'none',
-      '&:hover': {
-        borderColor: state.isFocused ? '#80bdff' : '#adb5bd'
-      }
-    }),
-    option: (base, state) => {
-      let backgroundColor = 'white';
-      if (state.isSelected) {
-        backgroundColor = '#007bff';
-      } else if (state.isFocused) {
-        backgroundColor = '#f8f9fa';
-      }
-
-      return {
-        ...base,
-        backgroundColor,
-        color: state.isSelected ? 'white' : '#495057',
-        '&:hover': {
-          backgroundColor: state.isSelected ? '#007bff' : '#f8f9fa'
-        }
-      };
-    }
-  };
-
-  return (
-    <Modal show={show} onHide={onHide} size="lg">
-      <Modal.Header closeButton>
-        <Modal.Title>Add New Route Pricing</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Form onSubmit={onSubmit}>
-          <Row>
-            <Col md={12}>
-              <Form.Group className="mb-3">
-                <Form.Label>Vendor *</Form.Label>
-                <Select
-                  options={vendorOptions}
-                  value={vendorOptions.find(o => o.value === formData.vendorCode) || null}
-                  onChange={o => updateField('vendorCode', o?.value || '')}
-                  placeholder="Select vendor"
-                  isClearable
-                  isSearchable
-                  className="react-select"
-                  classNamePrefix="select"
-                  styles={selectStyles}
-                />
-              </Form.Group>
-            </Col>
-            <Col md={12}>
-              <Form.Group className="mb-3">
-                <Form.Label>Package Size *</Form.Label>
-                <Select
-                  options={sizeOptions}
-                  value={sizeOptions.find(o => o.value === formData.shipmentRateSize) || null}
-                  onChange={o => updateField('shipmentRateSize', o?.value || '')}
-                  placeholder="Select package size"
-                  isClearable
-                  isSearchable
-                  className="react-select"
-                  classNamePrefix="select"
-                  styles={selectStyles}
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          <Row><Col md={12}><Form.Group className="mb-3"><Form.Label>Price Type *</Form.Label><Select options={priceTypeOptions} value={priceTypeOptions.find(o=>o.value===formData.priceType)} onChange={o=>{updateField('priceType',o?.value||'FIXED'); if(o?.value!=='ZONING') updateField('priceZoneID','');}} styles={selectStyles} /></Form.Group></Col></Row>
-
-          {formData.priceType === 'ZONING' && <div className="border rounded p-3 mb-3">
-            <Form.Label>Price Zone *</Form.Label>
-            <Select options={priceZoneOptions} value={priceZoneOptions.find(o=>String(o.value)===String(formData.priceZoneID))||null} onChange={o=>updateField('priceZoneID',o?.value||'')} styles={selectStyles} placeholder="Select a price zone" />
-          </div>}
-
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Delivery Type Code *</Form.Label>
-                <Select
-                  options={deliveryTypeOptions}
-                  value={selectedDeliveryType}
-                  onChange={handleDeliveryTypeChange}
-                  placeholder="Select delivery type"
-                  isClearable
-                  isSearchable
-                  className="react-select"
-                  classNamePrefix="select"
-                  styles={selectStyles}
-                />
-              </Form.Group>
-            </Col>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>SLA Hours</Form.Label>
-                <Form.Control
-                  type="number"
-                  name="slaHours"
-                  value={formData.slaHours}
-                  onChange={onInputChange}
-                  placeholder="Enter SLA hours"
-                  min="0"
-                  step="0.01"
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          <Row>
-            <Col md={12}>
-              <Form.Group className="mb-3">
-                <Form.Label>{formData.priceType === 'PER_KM' ? 'Rate per KM *' : 'Rate Amount *'}</Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  name="rateAmount"
-                  value={formData.rateAmount}
-                  onChange={onInputChange}
-                  placeholder="Enter rate amount"
-                  required
-                  min="0"
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Effective From</Form.Label>
-                <DatePicker
-                  selected={effectiveFromDate}
-                  onChange={handleEffectiveFromChange}
-                  showTimeSelect
-                  timeFormat="h:mm aa"
-                  timeIntervals={5}
-                  timeCaption="Time"
-                  dateFormat="yyyy-MM-dd h:mm aa"
-                  placeholderText="Select effective from date and time"
-                  className="form-control"
-                  wrapperClassName="w-100"
-                  locale="en-US"
-                  showMonthDropdown
-                  showYearDropdown
-                  dropdownMode="select"
-                  minDate={new Date()}
-                  isClearable
-                />
-              </Form.Group>
-            </Col>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Effective To</Form.Label>
-                <DatePicker
-                  selected={effectiveToDate}
-                  onChange={handleEffectiveToChange}
-                  showTimeSelect
-                  timeFormat="h:mm aa"
-                  timeIntervals={5}
-                  timeCaption="Time"
-                  dateFormat="yyyy-MM-dd h:mm aa"
-                  placeholderText="Select effective to date and time"
-                  className="form-control"
-                  wrapperClassName="w-100"
-                  locale="en-US"
-                  showMonthDropdown
-                  showYearDropdown
-                  dropdownMode="select"
-                  minDate={effectiveFromDate || new Date()}
-                  isClearable
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-        </Form>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={onHide}>
-          Cancel
-        </Button>
-        <Button 
-          variant="primary" 
-          onClick={onSubmit}
-          disabled={loading || !formData.rateAmount || !formData.vendorCode || !formData.shipmentRateSize || !formData.deliveryTypeCode || (formData.priceType === 'ZONING' && !formData.priceZoneID)}
-        >
-          {loading ? 'Creating...' : 'Create Route Pricing'}
-        </Button>
-      </Modal.Footer>
-    </Modal>
-  );
+  return <Modal show={show} onHide={onHide} size="lg" centered>
+    <Modal.Header closeButton><Modal.Title>Configure Pricing</Modal.Title></Modal.Header>
+    <Modal.Body>
+      <p className="text-muted mb-4">Vendor pricing overrides walk-in pricing for the same package size and delivery type.</p>
+      <Form onSubmit={onSubmit}>
+        <Row>
+          <Col md={6}><Form.Group className="mb-3"><Form.Label>Vendor</Form.Label><Select options={vendorOptions} value={vendorOptions.find((option) => option.value === (formData.vendorCode || "")) || vendorOptions[0]} onChange={(option) => updateField("vendorCode", option?.value || "")} /></Form.Group></Col>
+          <Col md={6}><Form.Group className="mb-3"><Form.Label>Package Size *</Form.Label><Select options={sizeOptions} value={sizeOptions.find((option) => option.value === formData.shipmentRateSize) || null} onChange={(option) => updateField("shipmentRateSize", option?.value || "")} /></Form.Group></Col>
+        </Row>
+        <Row>
+          <Col md={6}><Form.Group className="mb-3"><Form.Label>Delivery Type *</Form.Label><Select options={deliveryOptions} value={deliveryOptions.find((option) => option.value === formData.deliveryTypeCode) || null} onChange={(option) => updateField("deliveryTypeCode", option?.value || "")} /></Form.Group></Col>
+          <Col md={6}><Form.Group className="mb-3"><Form.Label>Pricing Type *</Form.Label><Select options={priceTypes} value={priceTypes.find((option) => option.value === formData.priceType)} onChange={(option) => updateField("priceType", option?.value || "FIXED")} /></Form.Group></Col>
+        </Row>
+        {formData.priceType === "FIXED" && <Form.Group className="mb-3"><Form.Label>Fixed Amount (KES) *</Form.Label><Form.Control type="number" min="0" step="0.01" name="rateAmount" value={formData.rateAmount} onChange={onInputChange} placeholder="Amount applied to every matching package" /></Form.Group>}
+        {formData.priceType === "PER_KM" && <Row>
+          <Col md={4}><Form.Group className="mb-3"><Form.Label>Base Price (KES) *</Form.Label><Form.Control type="number" min="0" step="0.01" name="basePrice" value={formData.basePrice} onChange={onInputChange} /></Form.Group></Col>
+          <Col md={4}><Form.Group className="mb-3"><Form.Label>Base KM Included *</Form.Label><Form.Control type="number" min="0" step="0.1" name="baseKM" value={formData.baseKM} onChange={onInputChange} /></Form.Group></Col>
+          <Col md={4}><Form.Group className="mb-3"><Form.Label>Price per Extra KM *</Form.Label><Form.Control type="number" min="0" step="0.01" name="pricePerKM" value={formData.pricePerKM} onChange={onInputChange} /></Form.Group></Col>
+          <Col xs={12}><div className="alert alert-light border small">
+            <strong>Practical example:</strong>{' '}
+            For a 12 KM delivery, KES {Number(formData.basePrice || 0).toFixed(2)} + ({Math.max(0, 12 - Number(formData.baseKM || 0)).toFixed(1)} extra KM x KES {Number(formData.pricePerKM || 0).toFixed(2)}) = <strong>KES {(Number(formData.basePrice || 0) + Math.max(0, 12 - Number(formData.baseKM || 0)) * Number(formData.pricePerKM || 0)).toFixed(2)}</strong>.
+          </div></Col>
+        </Row>}
+        {formData.priceType === "ZONING" && <div className="border rounded overflow-hidden mb-3"><Table responsive className="mb-0 align-middle">
+          <thead><tr><th>Price zone band</th><th>Sorting areas</th><th style={{ width: 210 }}>Price (KES)</th></tr></thead>
+          <tbody>{zones.map((zone) => <tr key={zone.id}><td className="fw-semibold">{zone.name}</td><td className="small text-muted">{zone.dcCodes.join(", ") || "No sorting areas assigned"}</td><td><Form.Control type="number" min="0" step="0.01" value={zonePrices[zone.id] ?? ""} onChange={(event) => updateField("zonePrices", { ...zonePrices, [zone.id]: event.target.value })} placeholder="0.00" /></td></tr>)}</tbody>
+        </Table>{!zones.length && <div className="p-3 text-muted">Create price zones before configuring zone-band pricing.</div>}</div>}
+      </Form>
+    </Modal.Body>
+    <Modal.Footer><Button variant="outline-secondary" onClick={onHide}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={loading || !canSubmit}>{loading ? "Saving..." : "Save Pricing"}</Button></Modal.Footer>
+  </Modal>;
 };
 
-AddRoutePricingModal.propTypes = {
-  show: PropTypes.bool.isRequired,
-  onHide: PropTypes.func.isRequired,
-  formData: PropTypes.shape({
-    fromDCCode: PropTypes.string,
-    toDCCode: PropTypes.string,
-    deliveryTypeCode: PropTypes.string,
-    slaHours: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    rateAmount: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    effectiveFrom: PropTypes.string,
-    effectiveTo: PropTypes.string,
-  }).isRequired,
-  onInputChange: PropTypes.func.isRequired,
-  onSubmit: PropTypes.func.isRequired,
-  loading: PropTypes.bool,
-  priceZones: PropTypes.array,
-};
-
+AddRoutePricingModal.propTypes = { show: PropTypes.bool.isRequired, onHide: PropTypes.func.isRequired, formData: PropTypes.object.isRequired, onInputChange: PropTypes.func.isRequired, onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool, priceZones: PropTypes.array };
 export default AddRoutePricingModal;

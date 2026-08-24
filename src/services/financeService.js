@@ -42,6 +42,10 @@ export const getActiveShipmentRate = async (params = {}) => {
         if (params.fromDCCode) queryParams.append('fromDCCode', params.fromDCCode);
         if (params.toDCCode) queryParams.append('toDCCode', params.toDCCode);
         if (params.deliveryTypeCode) queryParams.append('deliveryTypeCode', params.deliveryTypeCode);
+        if (params.shipmentRateSize) queryParams.append('shipmentRateSize', params.shipmentRateSize);
+        if (params.vendorCode) queryParams.append('vendorCode', params.vendorCode);
+        if (params.roadKM !== undefined && params.roadKM !== null) queryParams.append('roadKM', params.roadKM);
+        if (params.priceZoneID) queryParams.append('priceZoneID', params.priceZoneID);
 
         const url = `${apiRoutes.finance.getActiveShipmentRate}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await api.get(url);
@@ -69,6 +73,9 @@ export const getShipmentRates = async (params = {}) => {
         if (params.fromDCCode) queryParams.append('fromDCCode', params.fromDCCode);
         if (params.toDCCode) queryParams.append('toDCCode', params.toDCCode);
         if (params.deliveryTypeCode) queryParams.append('deliveryTypeCode', params.deliveryTypeCode);
+        if (params.vendorCode) queryParams.append('vendorCode', params.vendorCode);
+        if (params.shipmentRateSize) queryParams.append('shipmentRateSize', params.shipmentRateSize);
+        if (params.priceType) queryParams.append('priceType', params.priceType);
 
         const url = `${apiRoutes.finance.getShipmentRates}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await api.get(url);

@@ -58,7 +58,8 @@ const RoutePricingList = () => {
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
-    vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '',
+    vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+    basePrice: '', baseKM: '', pricePerKM: '',
     fromDCCode: '',
     toDCCode: '',
     deliveryTypeCode: '',
@@ -146,9 +147,12 @@ const RoutePricingList = () => {
       // Convert form data to match API requirements
       const submitData = {
         ...formData,
-        slaHours: formData.slaHours ? parseFloat(formData.slaHours) : null,
-        rateAmount: parseFloat(formData.rateAmount),
-        priceZoneID: formData.priceZoneID ? Number(formData.priceZoneID) : null,
+        slaHours: null,
+        rateAmount: formData.rateAmount === '' ? 0 : parseFloat(formData.rateAmount),
+        basePrice: formData.basePrice === '' ? null : parseFloat(formData.basePrice),
+        baseKM: formData.baseKM === '' ? null : parseFloat(formData.baseKM),
+        pricePerKM: formData.pricePerKM === '' ? null : parseFloat(formData.pricePerKM),
+        zonePrices: Object.entries(formData.zonePrices || {}).filter(([, amount]) => amount !== '').map(([priceZoneID, amount]) => ({ priceZoneID: Number(priceZoneID), rateAmount: Number(amount) })),
         effectiveFrom: formData.effectiveFrom || null,
         effectiveTo: formData.effectiveTo || null
       };
@@ -161,7 +165,8 @@ const RoutePricingList = () => {
 
       setShowModal(false);
       setFormData({
-        vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '',
+        vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+        basePrice: '', baseKM: '', pricePerKM: '',
         fromDCCode: '',
         toDCCode: '',
         deliveryTypeCode: '',
@@ -180,7 +185,8 @@ const RoutePricingList = () => {
   const handleCloseModal = () => {
     setShowModal(false);
     setFormData({
-      vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '',
+      vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+      basePrice: '', baseKM: '', pricePerKM: '',
       fromDCCode: '',
       toDCCode: '',
       deliveryTypeCode: '',
@@ -235,8 +241,8 @@ const RoutePricingList = () => {
       sorter: (a, b) => (a.VendorName || '').localeCompare(b.VendorName || ''),
       render: (name, record) => (
         <div>
-          <div className="fw-bold">{name || "N/A"}</div>
-          <small className="text-muted">{record.VendorCode || ""}</small>
+          <div className="fw-bold">{name || "Walk-in / Default"}</div>
+          <small className="text-muted">{record.VendorCode || "Default pricing"}</small>
         </div>
       ),
     },
@@ -261,9 +267,11 @@ const RoutePricingList = () => {
       ),
     },
     {
-      title: "Rate Amount",
+      title: "Pricing",
       dataIndex: "RateAmount",
-      render: (amount) => `KSh ${amount ? amount.toFixed(2) : '0.00'}`,
+      render: (amount, record) => record.PriceType === 'PER_KM'
+        ? <div><strong>KSh {Number(record.BasePrice || 0).toFixed(2)}</strong><small className="d-block text-muted">Includes {Number(record.BaseKM || 0)} KM, then KSh {Number(record.PricePerKM || 0).toFixed(2)}/KM</small></div>
+        : <div><strong>KSh {Number(amount || 0).toFixed(2)}</strong>{record.PriceType === 'ZONING' && <small className="d-block text-muted">{record.PriceZoneName}</small>}</div>,
       sorter: (a, b) => (a.RateAmount || 0) - (b.RateAmount || 0),
     },
     {
@@ -350,8 +358,8 @@ const RoutePricingList = () => {
         <div className="page-header">
           <div className="add-item d-flex">
             <div className="page-title">
-              <h4>Route Pricing</h4>
-              <h6>Manage delivery route pricing</h6>
+              <h4>Vendor Pricing</h4>
+              <h6>Manage walk-in defaults and vendor-specific package pricing</h6>
             </div>
           </div>
           <ul className="table-top-head">
@@ -416,7 +424,7 @@ const RoutePricingList = () => {
               onClick={() => setShowModal(true)}
             >
               <PlusCircle className="me-2 iconsize" />
-              Add Route Pricing
+              Configure Pricing
             </Button>
           </div>
 
