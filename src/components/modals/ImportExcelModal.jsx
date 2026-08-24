@@ -4,6 +4,7 @@ import Select from 'react-select';
 import { DownloadCloud, UploadCloud, FileText } from 'feather-icons-react';
 import { useVendors } from '@/hooks/useVendors';
 import { useShipment } from '@/hooks/useShipment';
+import { useAdmin } from '@/hooks/useAdmin';
 import notify from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -14,9 +15,11 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
   const { vendors, loading: vendorsLoading } = useVendors(vendorParams);
   
   const { deliveryTypes, handleDownloadExcelTemplate, handleUploadExcel, loading: shipmentLoading } = useShipment();
+  const { distributionCenters, fetchDistributionCenters } = useAdmin();
   
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [selectedDeliveryType, setSelectedDeliveryType] = useState(null);
+  const [selectedSortingCentre, setSelectedSortingCentre] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [validationError, setValidationError] = useState('');
@@ -26,12 +29,17 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
     if (show) {
       setSelectedVendor(null);
       setSelectedDeliveryType(null);
+      setSelectedSortingCentre(null);
       setSelectedFile(null);
       setVendorParams({});
       setIsUploading(false);
       setValidationError('');
     }
   }, [show]);
+
+  useEffect(() => {
+    if (show) fetchDistributionCenters();
+  }, [show, fetchDistributionCenters]);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -62,12 +70,18 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
       notify.error('Please select a delivery type');
       return;
     }
+
+    if (!selectedSortingCentre) {
+      notify.error('Please select a sorting centre');
+      return;
+    }
     
     const vendorCode = showVendorInput ? selectedVendor.value : user?.AssignedVendor?.VendorCode;
     
     const formData = new FormData();
     formData.append('VendorCode', vendorCode);
     formData.append('DeliveryTypeCode', selectedDeliveryType.value);
+    formData.append('DestinationDCCode', selectedSortingCentre.value);
     formData.append('file', selectedFile);
     
     try {
@@ -166,6 +180,22 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
             />
           </Form.Group>
 
+          <Form.Group className="mb-3">
+            <Form.Label>Sorting Centre <span className="text-danger">*</span></Form.Label>
+            <Select
+              name="selectedSortingCentre"
+              value={selectedSortingCentre}
+              onChange={setSelectedSortingCentre}
+              options={Array.isArray(distributionCenters) ? distributionCenters.map((dc) => ({
+                value: dc.DCCode,
+                label: `${dc.DCName} (${dc.DCCode})`,
+              })) : []}
+              placeholder="Select destination sorting centre..."
+              isClearable
+              isSearchable
+            />
+          </Form.Group>
+
           <Form.Group className="mb-4">
             <Form.Label>Upload Filled Template <span className="text-danger">*</span></Form.Label>
             <div className="custom-file-upload border rounded p-4 text-center bg-light">
@@ -193,7 +223,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
             <Button 
               variant="primary" 
               type="submit" 
-              disabled={isUploading || !selectedFile || !selectedDeliveryType || (showVendorInput && !selectedVendor)}
+              disabled={isUploading || !selectedFile || !selectedDeliveryType || !selectedSortingCentre || (showVendorInput && !selectedVendor)}
               className="d-inline-flex align-items-center justify-content-center"
               style={{ minWidth: '170px' }}
             >

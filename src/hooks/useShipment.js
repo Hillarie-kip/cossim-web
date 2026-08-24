@@ -753,7 +753,7 @@ export const useShipment = (initialParams = {}) => {
 
       const response = await uploadShipmentExcel(formData);
       if (response.Error) {
-        throw new Error(response.Error);
+        throw new Error(response.Message || 'Failed to upload excel');
       } else {
         notify.success('Excel uploaded successfully!');
       }

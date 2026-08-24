@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Datatable from "@/core/pagination/datatable";
+import TableExportIcons from "@/components/TableExportIcons";
 import { getHandoverBatchList, getShipmentOrders } from "@/services/shipmentService";
 import notify from "@/lib/toast";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -17,6 +18,8 @@ export default function DeliveredOrdersTableReport({
   statusIDs = "303",
   allowPayment = false,
   emptyTitle = "No delivered orders found",
+  dateOnly = false,
+  allowExport = false,
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +48,15 @@ export default function DeliveredOrdersTableReport({
           orderBy: "DateAdded",
           sortDir: "DESC",
         })
-        : await getShipmentOrders({
+        : await getShipmentOrders(dateOnly ? {
+          pageNo: page,
+          pageSize,
+          checkSLA: false,
+          vendorCode: navigationFilters.vendorCode || undefined,
+          toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
+          startDate: navigationFilters.startDate || undefined,
+          endDate: navigationFilters.endDate || undefined,
+        } : {
           pageNo: page,
           pageSize,
           taskType,
@@ -74,7 +85,7 @@ export default function DeliveredOrdersTableReport({
     }
   };
 
-  useEffect(() => { loadReport({ page: 1, pageSize: 1000 }); }, [navigationFilters.startDate, navigationFilters.endDate, navigationFilters.vendorCode, navigationFilters.dcCode]);
+  useEffect(() => { loadReport({ page: 1, pageSize: 1000 }); }, [navigationFilters.startDate, navigationFilters.endDate, navigationFilters.vendorCode, navigationFilters.dcCode, navigationFilters.dcCodes]);
 
   const columns = useMemo(() => isConsolidated ? [
     { title: "Handover code", dataIndex: "HandoverCode", width: 220, render: (value) => <strong className="text-primary">{text(value)}</strong> },
@@ -108,14 +119,82 @@ export default function DeliveredOrdersTableReport({
     }] : []),
   ], [allowPayment, isConsolidated]);
 
+  const exportColumns = useMemo(() => [
+    { title: "Order number", dataIndex: "OrderNO" },
+    { title: "Vendor", dataIndex: "VendorName" },
+    { title: "Vendor code", dataIndex: "VendorCode" },
+    { title: "Receiver", dataIndex: "ReceiverContactName" },
+    { title: "Receiver phone", dataIndex: "ReceiverContactPhone" },
+    { title: "Origin", dataIndex: "OriginDCName" },
+    { title: "Origin code", dataIndex: "OriginDCCode" },
+    { title: "Destination", dataIndex: "DestinationDCName" },
+    { title: "Destination code", dataIndex: "DestinationDCCode" },
+    { title: "Delivery type", dataIndex: "DeliveryType" },
+    { title: "Service fee", dataIndex: "ServiceFee" },
+    { title: "COD", dataIndex: "CODAmount" },
+    { title: "Date", dataIndex: "DateAdded" },
+  ], []);
+
+  const pdfColumns = useMemo(() => exportColumns.filter((column) => ![
+    "Vendor code", "Receiver phone", "Origin code", "Destination code",
+  ].includes(column.title)), [exportColumns]);
+
+  const fetchAllDataForExport = async (onProgress) => {
+    const pageSize = 1000;
+    let page = 1;
+    let allRows = [];
+    let total = 0;
+
+    do {
+      const response = await getShipmentOrders({
+        pageNo: page,
+        pageSize,
+        checkSLA: false,
+        vendorCode: navigationFilters.vendorCode || undefined,
+        toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
+        startDate: navigationFilters.startDate || undefined,
+        endDate: navigationFilters.endDate || undefined,
+        orderBy: "DateAdded",
+        sortDir: "DESC",
+        forceRefresh: true,
+        backgroundRefresh: false,
+        indexedDBCache: false,
+      });
+      const pageRows = Array.isArray(response?.Data) ? response.Data : [];
+      total = Number(response?.TotalCount || pageRows.length);
+      allRows = allRows.concat(pageRows);
+      onProgress?.(Math.min(allRows.length, total), total);
+      if (!pageRows.length) break;
+      page += 1;
+    } while (allRows.length < total);
+
+    return allRows;
+  };
+
   return <div className="content">
-    <div className="page-header"><div className="page-title"><h4>{title}</h4><h6>{description}</h6></div></div>
+    <div className="page-header">
+      <div className="page-title"><h4>{title}</h4><h6>{description}</h6></div>
+      {allowExport && (
+        <ul className="table-top-head">
+          <TableExportIcons
+            data={rows}
+            columns={exportColumns}
+            pdfColumns={pdfColumns}
+            excelColumns={exportColumns}
+            filename="received-orders"
+            title="Received Orders"
+            fetchAllData={fetchAllDataForExport}
+            pdfOrientation="landscape"
+          />
+        </ul>
+      )}
+    </div>
     <div className="card table-list-card">
       <div className="card-body">
-        <div className="row g-2 align-items-end mb-3">
+        {!dateOnly && <div className="row g-2 align-items-end mb-3">
           <div className="col-lg-9"><label className="form-label">Search</label><input className="form-control" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") loadReport({ page: 1, search: event.currentTarget.value }); }} placeholder={isConsolidated ? "Handover code, shipment no., source DC, or destination DC" : "Order number, vendor, customer, or DC"} /></div>
           <div className="col-lg-3 d-flex gap-2"><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
-        </div>
+        </div>}
         <Datatable
           className="table"
           columns={columns}

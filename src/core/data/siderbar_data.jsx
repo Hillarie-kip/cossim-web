@@ -71,6 +71,7 @@ export const SidebarData = [
         submenu: true,
         description: "Delivered and completed orders",
         submenuItems: [
+          { label: "Received Orders", icon: <Icon.Inbox />, link: "/admin/reports/vendor-received-orders", submenu: false },
           { label: "Delivered Orders", icon: <Icon.CheckCircle />, link: "/admin/reports/delivered-orders", submenu: false },
           { label: "Completed Orders", icon: <Icon.CheckSquare />, link: "/admin/reports/completed-orders", submenu: false },
         ],

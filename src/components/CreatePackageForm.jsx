@@ -2,9 +2,10 @@
 ///@ts-check
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, User, MapPin, Plus, Trash2 } from "feather-icons-react";
+import { ArrowLeft, Check, Package, User, MapPin, Plus, Trash2 } from "feather-icons-react";
 import { Form, Row, Col, Card, Button, Alert, Spinner, Modal, Tabs, Tab } from 'react-bootstrap';
 import Select from 'react-select';
+import CreatableSelect from 'react-select/creatable';
 import Link from '@/components/Link';
 import { all_routes } from '@/Router/all_routes';
 import { useShipment } from '@/hooks/useShipment';
@@ -150,6 +151,9 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formStep, setFormStep] = useState(0);
+  const [roadDistance, setRoadDistance] = useState(null);
+  const [roadDistanceStatus, setRoadDistanceStatus] = useState('idle');
   const receiverStreetRef = useRef(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [shippingRate, setShippingRate] = useState(null);
@@ -191,6 +195,68 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       if (listener) window.google?.maps?.event?.removeListener(listener);
     };
   }, []);
+
+  useEffect(() => {
+    const sortingArea = distributionCenters.find((dc) => dc.DCCode === formData.originDCCode);
+    const rawOriginLat = sortingArea?.Latitude ?? sortingArea?.latitude;
+    const rawOriginLng = sortingArea?.Longitude ?? sortingArea?.longitude;
+    const originLat = rawOriginLat === null || rawOriginLat === undefined || rawOriginLat === '' ? null : Number(rawOriginLat);
+    const originLng = rawOriginLng === null || rawOriginLng === undefined || rawOriginLng === '' ? null : Number(rawOriginLng);
+    const destinationLat = Number(formData.receiverLatitude);
+    const destinationLng = Number(formData.receiverLongitude);
+
+    if (!formData.originDCCode || !formData.receiverLatitude || !formData.receiverLongitude) {
+      setRoadDistance(null);
+      setRoadDistanceStatus('idle');
+      return;
+    }
+
+    let active = true;
+    setRoadDistance(null);
+    setRoadDistanceStatus('loading');
+
+    loadGooglePlaces().then(async (available) => {
+      if (!available || !window.google?.maps || !active) throw new Error('Google Maps is unavailable');
+
+      let origin = Number.isFinite(originLat) && Number.isFinite(originLng)
+        ? { lat: originLat, lng: originLng }
+        : null;
+
+      if (!origin) {
+        const address = [sortingArea?.DCName, sortingArea?.AddressLine1, sortingArea?.CityName, sortingArea?.Region, 'Kenya'].filter(Boolean).join(', ');
+        origin = await new Promise((resolve, reject) => {
+          new window.google.maps.Geocoder().geocode({ address }, (results, status) => {
+            const location = results?.[0]?.geometry?.location;
+            if (status === 'OK' && location) resolve({ lat: location.lat(), lng: location.lng() });
+            else reject(new Error(`Sorting area location could not be resolved (${status})`));
+          });
+        });
+      }
+
+      const result = await new Promise((resolve, reject) => {
+        new window.google.maps.DistanceMatrixService().getDistanceMatrix({
+          origins: [origin],
+          destinations: [{ lat: destinationLat, lng: destinationLng }],
+          travelMode: window.google.maps.TravelMode.DRIVING,
+          unitSystem: window.google.maps.UnitSystem.METRIC,
+        }, (response, status) => {
+          const element = response?.rows?.[0]?.elements?.[0];
+          if (status === 'OK' && element?.status === 'OK' && element.distance) resolve(element);
+          else reject(new Error(element?.status || status || 'Distance unavailable'));
+        });
+      });
+
+      if (!active) return;
+      setRoadDistance({ text: result.distance.text, kilometers: Number((result.distance.value / 1000).toFixed(1)) });
+      setRoadDistanceStatus('ready');
+    }).catch((distanceError) => {
+      if (!active) return;
+      setRoadDistance(null);
+      setRoadDistanceStatus(distanceError.message || 'Distance unavailable');
+    });
+
+    return () => { active = false; };
+  }, [distributionCenters, formData.originDCCode, formData.receiverLatitude, formData.receiverLongitude]);
 
   // Product selection state
   const [itemEntryMode, setItemEntryMode] = useState('manual'); // 'manual' or 'select'
@@ -415,6 +481,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const handleProductSelect = (selectedOption) => {
     if (!selectedOption) {
       setSelectedProduct(null);
+      setNewItemData((current) => ({ ...current, productName: '' }));
       return;
     }
 
@@ -433,7 +500,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         remarks: '',
         quantity: 1
       });
+    } else {
+      setSelectedProduct(null);
+      setNewItemData((current) => ({ ...current, productName: selectedOption.label || selectedOption.value || '' }));
     }
+    setNewItemErrors((current) => ({ ...current, productName: '' }));
   };
 
   // Handle switching between manual entry and product selection
@@ -548,9 +619,12 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       errors.orderItems = 'Please add at least one item to the package';
     }
 
-    // Receiver address validation
-    if (!formData.receiverCity.trim()) {
-      errors.receiverCity = 'Receiver city is required';
+    if (!formData.receiverStreetName.trim()) {
+      errors.receiverStreetName = 'Delivery street is required';
+    }
+
+    if (!formData.shipmentSize) {
+      errors.shipmentSize = 'Package size is required';
     }
 
     // Phone number validation
@@ -585,6 +659,30 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const advanceFormStep = () => {
+    const errors = {};
+
+    if (formStep === 0) {
+      if (showVendorInput && !formData.selectedVendor) errors.selectedVendor = 'Please select a vendor';
+      if (!formData.originDCCode && !user?.AssignedVendor?.DefaultDCCode) errors.originDCCode = 'Sorting area is required';
+    } else if (formStep === 1) {
+      if (!formData.receiverContactName.trim()) errors.receiverContactName = 'Receiver contact name is required';
+      if (!formData.receiverContactPhone.trim()) errors.receiverContactPhone = 'Receiver phone number is required';
+      if (!formData.receiverStreetName.trim()) errors.receiverStreetName = 'Delivery street is required';
+      if (!formData.deliveryTypeCode) errors.deliveryTypeCode = 'Delivery type is required';
+    } else if (formStep === 2) {
+      if (!formData.shipmentSize) errors.shipmentSize = 'Package size is required';
+      if (!orderItems.length) errors.orderItems = 'Please add at least one item to the package';
+    }
+
+    setValidationErrors((current) => ({ ...current, ...errors }));
+    if (Object.keys(errors).length) {
+      notify.error('Please complete the required fields');
+      return;
+    }
+    setFormStep((step) => Math.min(3, step + 1));
   };
 
   const handleSubmit = async (e) => {
@@ -807,19 +905,43 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
           </div>
         </div>
 
+        <nav className="package-stepper" aria-label="Package creation progress">
+          {[
+            ['Vendor & Route', 'Store, sorting area'],
+            ['Receiver', 'Contact, address'],
+            ['Package', 'Items, size, fees'],
+            ['Review', 'Confirm & create'],
+          ].map(([label, subtitle], index) => {
+            const StepIcon = [User, MapPin, Package, Check][index];
+            return (
+            <button
+              key={label}
+              type="button"
+              className={index === formStep ? 'active' : index < formStep ? 'complete' : ''}
+              onClick={() => index < formStep && setFormStep(index)}
+              aria-current={index === formStep ? 'step' : undefined}
+            >
+              <span><StepIcon size={17} /></span>
+              <div><strong>{label}</strong><small>{subtitle}</small></div>
+            </button>
+            );
+          })}
+        </nav>
+
         {/* Main Form */}
         <Form onSubmit={handleSubmit}>
           <Row>
             <Col lg={8}>
               {/* Customer Information */}
-              <Card className="mb-4">
+              <Card className={`mb-4 create-package-step-card ${formStep <= 1 ? '' : 'd-none'}`}>
                 <Card.Header>
                   <div className="d-flex align-items-center">
                     <User className="me-2 text-primary" size={20} />
-                    <h5 className="mb-0">Customer Information</h5>
+                    <div><h5 className="mb-0">{formStep === 0 ? 'Vendor & Route' : 'Receiver Information'}</h5><small>{formStep === 0 ? 'Who this package is being shipped for, and where it starts its journey.' : "Who's receiving the package, and where it's headed."}</small></div>
                   </div>
                 </Card.Header>
                 <Card.Body>
+                  <div className={formStep === 0 ? '' : 'd-none'}>
                    {/* Vendor Selection */}
                   {showVendorInput && (
                     <div className="mb-3">
@@ -850,7 +972,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         styles={{
                           control: (base, state) => ({
                             ...base,
-                            backgroundColor: '#F5E6D8',
+                            backgroundColor: '#F5F6F4',
                             borderColor: validationErrors.selectedVendor ? '#dc3545' : base.borderColor,
                             '&:hover': {
                               borderColor: validationErrors.selectedVendor ? '#dc3545' : base.borderColor,
@@ -891,7 +1013,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       styles={{
                         control: (base) => ({
                           ...base,
-                          backgroundColor: '#F5E6D8',
+                          backgroundColor: '#F5F6F4',
                         })
                       }}
                     />
@@ -907,36 +1029,24 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     )}
                   </div>
 
-                  {/* Sender Information Section */}
+                  {/* Sorting area */}
                   <div className="mb-4">
-                    <h6 className="mb-3 text-primary">Sender Information</h6>
                     <Row>
-                      <Col md={6} className="mb-3">
-                        <Form.Label>Sender Company Name</Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="senderCompanyName"
-                          placeholder="Enter sender company name"
-                          value={formData.senderCompanyName}
-                          onChange={handleInputChange}
-                          style={{ backgroundColor: '#F5E6D8' }}
-                        />
-                      </Col>
-                      <Col md={6} className="mb-3">
-                        <Form.Label>Origin DC Code</Form.Label>
+                      <Col md={12} className="mb-3">
+                        <Form.Label>Sorting Area</Form.Label>
                         <Select
                           name="originDCCode"
                           value={dcOptions.find(option => option.value === formData.originDCCode) || null}
                           onChange={handleOriginDCChange}
                           options={dcOptions}
-                          placeholder="Select origin DC..."
+                          placeholder="Select sorting area..."
                           isClearable
                           isSearchable
                           className={validationErrors.originDCCode ? 'is-invalid' : ''}
                           styles={{
                             control: (provided, state) => ({
                               ...provided,
-                              backgroundColor: '#F5E6D8',
+                              backgroundColor: '#F5F6F4',
                               borderColor: validationErrors.originDCCode ? '#dc3545' : provided.borderColor,
                               '&:hover': {
                                 borderColor: validationErrors.originDCCode ? '#dc3545' : provided.borderColor,
@@ -950,15 +1060,16 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           </div>
                         )}
                         <Form.Text className="text-muted">
-                          Distribution center code for pickup location
+                          Sorting area responsible for this package
                         </Form.Text>
                       </Col>
                     </Row>
                   </div>
 
+                  </div>
+
                   {/* Receiver Information Section */}
-                  <div className="mb-4">
-                    <h6 className="mb-3 text-primary">Receiver Information</h6>
+                  <div className={formStep === 1 ? 'mb-4' : 'd-none'}>
                     <Row>
                       <Col md={6} className="mb-3">
                         <Form.Label>Receiver Contact Name *</Form.Label>
@@ -969,7 +1080,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           value={formData.receiverContactName}
                           onChange={handleInputChange}
                           isInvalid={!!validationErrors.receiverContactName}
-                          style={{ backgroundColor: '#F5E6D8' }}
                         />
                         <Form.Control.Feedback type="invalid">
                           {validationErrors.receiverContactName}
@@ -984,7 +1094,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           value={formData.receiverContactPhone}
                           onChange={handleInputChange}
                           isInvalid={!!validationErrors.receiverContactPhone}
-                          style={{ backgroundColor: '#F5E6D8' }}
                         />
                         <Form.Control.Feedback type="invalid">
                           {validationErrors.receiverContactPhone}
@@ -992,44 +1101,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       </Col>
                     </Row>
 
-                    <Row>
-                      <Col md={12} className="mb-3">
-                        <Form.Label>Receiver Company Name</Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="receiverCompanyName"
-                          placeholder="Optional"
-                          value={formData.receiverCompanyName}
-                          onChange={handleInputChange}
-                          style={{ backgroundColor: '#F5E6D8' }}
-                        />
-                      </Col>
-                    </Row>
-
                     {/* Receiver Address */}
-                    <h6 className="mb-3 mt-2">Receiver Address</h6>
+                    <h6 className="mb-3 mt-2">Delivery Address</h6>
                     <Row>
                       <Col md={6} className="mb-3">
-                        <Form.Label>City *</Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="receiverCity"
-                          placeholder="Enter city"
-                          value={formData.receiverCity}
-                          onChange={handleInputChange}
-                          isInvalid={!!validationErrors.receiverCity}
-                          style={{ backgroundColor: '#F5E6D8' }}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.receiverCity}
-                        </Form.Control.Feedback>
-                      </Col>
-                      
-                    </Row>
-
-                    <Row>
-                      <Col md={6} className="mb-3">
-                        <Form.Label>Area/Street</Form.Label>
+                        <Form.Label>Street *</Form.Label>
                         <Form.Control
                           ref={receiverStreetRef}
                           type="text"
@@ -1038,8 +1114,17 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           value={formData.receiverStreetName}
                           onChange={handleInputChange}
                           autoComplete="off"
-                          style={{ backgroundColor: '#F5E6D8' }}
+                          isInvalid={!!validationErrors.receiverStreetName}
                         />
+                        <Form.Control.Feedback type="invalid">
+                          {validationErrors.receiverStreetName}
+                        </Form.Control.Feedback>
+                        <Form.Text className="place-search-hint">Powered by Google Places. Select a suggestion to calculate the driving distance.</Form.Text>
+                        {roadDistanceStatus === 'loading' && <div className="road-distance-chip loading"><Spinner size="sm" /> Calculating road distance...</div>}
+                        {roadDistanceStatus === 'ready' && roadDistance && <div className="road-distance-chip"><MapPin size={13} /> {roadDistance.text} by road</div>}
+                        {roadDistanceStatus !== 'idle' && roadDistanceStatus !== 'loading' && roadDistanceStatus !== 'ready' && (
+                          <div className="road-distance-chip unavailable">Road distance unavailable. Check the sorting area coordinates and Google Distance Matrix access.</div>
+                        )}
                       </Col>
                       <Col md={6} className="mb-3">
                        <Form.Label>Package Delivery Type *</Form.Label>
@@ -1048,7 +1133,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         value={formData.deliveryTypeCode}
                         onChange={handleInputChange}
                         isInvalid={!!validationErrors.deliveryTypeCode}
-                        style={{ backgroundColor: '#F5E6D8' }}
                       >
                         <option value="">Select Delivery Type</option>
                         {Array.isArray(deliveryTypes) && deliveryTypes.map((type) => (
@@ -1069,11 +1153,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
               </Card>
 
               {/* Package Details */}
-              <Card className="mb-4">
+              <Card className={`mb-4 create-package-step-card ${formStep === 2 ? '' : 'd-none'}`}>
                 <Card.Header>
                   <div className="d-flex align-items-center">
                     <Package className="me-2 text-primary" size={20} />
-                    <h5 className="mb-0">Package Details</h5>
+                    <div><h5 className="mb-0">Package Details</h5><small>What's inside, how big it is, and any extra charges.</small></div>
                   </div>
                 </Card.Header>
                 <Card.Body>
@@ -1098,7 +1182,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       )}
 
                       {orderItems.length === 0 ? (
-                        <div className="text-center py-4 border rounded" style={{ backgroundColor: '#f8f9fa' }}>
+                        <div className="text-center py-4 border rounded">
                           <Package size={32} className="text-muted mb-2" />
                           <div className="text-muted">No items added yet</div>
                           <small className="text-muted">Click "Add Item" to add items to your package</small>
@@ -1106,7 +1190,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       ) : (
                         <div className="items-list">
                           {orderItems.map((item, index) => (
-                            <div key={index} className="item-card border rounded p-3 mb-2" style={{ backgroundColor: '#f8f9fa' }}>
+                            <div key={index} className="item-card border rounded p-3 mb-2">
                               <div className="d-flex justify-content-between align-items-start">
                                 <div className="flex-grow-1">
                                   <div className="d-flex align-items-center mb-1">
@@ -1157,25 +1241,40 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     </div>
 
                   {/* Package Guidelines */}
-                  <div className="mb-3">
-                    <div className="d-flex align-items-center text-success mb-1">
+                  <div className="mb-3 package-guideline-banners">
+                    <div className="d-flex align-items-center text-success mb-1 guideline-ok">
                       <i className="feather-check-circle me-2" style={{ fontSize: '14px' }}></i>
                       <small><strong>Weight Limit:</strong> We handle packages up to 5kg</small>
                     </div>
-                    <div className="d-flex align-items-center text-info mb-1">
+                    <div className="d-flex align-items-center text-info mb-1 guideline-info">
                       <i className="feather-info me-2" style={{ fontSize: '14px' }}></i>
                       <small><strong>Examples:</strong> Laptop, books, shoes, small electronics, documents</small>
                     </div>
-                    <div className="d-flex align-items-center text-danger mb-3">
+                    <div className="d-flex align-items-center text-danger mb-3 guideline-warn">
                       <i className="feather-x-circle me-2" style={{ fontSize: '14px' }}></i>
                       <small><strong>Not suitable:</strong> Heavy machinery, large furniture, bulk items</small>
                     </div>
                   </div>
 
+                  <div className="mb-4 mt-3">
+                    <Form.Label>Package Size *</Form.Label>
+                    <div className={`package-size-picker ${validationErrors.shipmentSize ? 'is-invalid' : ''}`}>
+                      {Object.entries({ SMALL: 'up to 1kg', MEDIUM: '1-3kg', LARGE: '3-5kg' }).map(([size, meta]) => (
+                        <button key={size} type="button" className={formData.shipmentSize === size ? 'active' : ''}
+                          onClick={() => setFormData((previous) => ({ ...previous, shipmentSize: size }))}
+                          aria-pressed={formData.shipmentSize === size}>
+                          <strong>{size.charAt(0) + size.slice(1).toLowerCase()}</strong>
+                          <small>{meta}</small>
+                        </button>
+                      ))}
+                    </div>
+                    {validationErrors.shipmentSize && <div className="invalid-feedback d-block">{validationErrors.shipmentSize}</div>}
+                  </div>
+
 
                   {/* Cash on Delivery */}
                   <div className="mb-3">
-                    <div className="d-flex align-items-center justify-content-between p-3 border rounded" style={{ backgroundColor: '#F9F9F9' }}>
+                    <div className="d-flex align-items-center justify-content-between p-3 border rounded cod-toggle-row">
                       <div>
                         <h6 className="mb-1">Cash on Delivery (COD)</h6>
                         <small className="text-muted">Enable if payment should be collected upon delivery</small>
@@ -1215,7 +1314,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
                   {/* Additional Fee */}
                   <div className="mb-3">
-                    <div className="p-3 border rounded" style={{ backgroundColor: '#F9F9F9' }}>
+                    <div className="p-3 border rounded additional-fee-panel">
                       <h6 className="mb-3">Additional Fee</h6>
                       <Row>
                         <Col md={6}>
@@ -1224,7 +1323,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                             name="feeType"
                             value={formData.feeType}
                             onChange={handleInputChange}
-                            style={{ backgroundColor: '#F5E6D8' }}
                           >
                             <option value="additional fee">Additional Fee</option>
                             <option value="discount">Discount</option>
@@ -1268,15 +1366,40 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       name="notes"
                       value={formData.notes}
                       onChange={handleInputChange}
-                      style={{ backgroundColor: '#F5E6D8' }}
                     />
                   </div>
                 </Card.Body>
               </Card>
               
               {/* Terms and Conditions */}
-              <Card className="mb-4">
+              <Card className={`mb-4 create-package-step-card ${formStep === 3 ? '' : 'd-none'}`}>
+                <Card.Header><div><h5 className="mb-0">Review &amp; Confirm</h5><small>Check everything before this package hits the road.</small></div></Card.Header>
                 <Card.Body>
+                  <div className="review-sections mb-4">
+                    <section>
+                      <header><h6>Vendor &amp; Route</h6><button type="button" onClick={() => setFormStep(0)}>Edit</button></header>
+                      <div className="review-grid">
+                        <div><small>Vendor</small><strong>{formData.selectedVendor?.label || user?.AssignedVendor?.VendorName || 'Current vendor'}</strong></div>
+                        <div><small>Sorting area</small><strong>{dcOptions.find((option) => option.value === formData.originDCCode)?.label || formData.originDCCode}</strong></div>
+                      </div>
+                    </section>
+                    <section>
+                      <header><h6>Receiver</h6><button type="button" onClick={() => setFormStep(1)}>Edit</button></header>
+                      <div className="review-grid">
+                        <div><small>Recipient</small><strong>{formData.receiverContactName}</strong></div>
+                        <div><small>Phone</small><strong>{formData.receiverContactPhone}</strong></div>
+                        <div><small>Street</small><strong>{formData.receiverStreetName}</strong></div>
+                        <div><small>Delivery type</small><strong>{formData.deliveryTypeCode}</strong></div>
+                      </div>
+                    </section>
+                    <section>
+                      <header><h6>Package</h6><button type="button" onClick={() => setFormStep(2)}>Edit</button></header>
+                      <div className="review-grid">
+                        <div><small>Package size</small><strong>{formData.shipmentSize}</strong></div>
+                        <div><small>Items</small><strong>{orderItems.length}</strong></div>
+                      </div>
+                    </section>
+                  </div>
                   <Form.Check
                     type="checkbox"
                     id="terms-conditions"
@@ -1305,10 +1428,22 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
               </Card>
 
               {/* Submit Button */}
-              <div className="d-grid">
+              <div className="d-flex gap-2 justify-content-between">
+                {formStep > 0 && (
+                  <Button type="button" variant="outline-secondary" size="lg" onClick={() => setFormStep((step) => step - 1)}>
+                    <ArrowLeft className="me-2" size={16} />Back
+                  </Button>
+                )}
+                {formStep < 3 && (
+                  <Button type="button" size="lg" className="ms-auto" onClick={advanceFormStep}>
+                    Continue
+                  </Button>
+                )}
+                {formStep === 3 && (
                 <Button
                   type="submit"
                   size="lg"
+                  className="ms-auto create-package-submit"
                   disabled={isSubmitting || loading || rateCalculating}
                   style={{
                     backgroundColor: '#E67E22',
@@ -1333,6 +1468,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     </>
                   )}
                 </Button>
+                )}
               </div>
             </Col>
 
@@ -1357,13 +1493,26 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     </div>
                   </div>
 
-                  {formData.receiverCity && (
+                  {formData.receiverStreetName && (
                     <div className="summary-item">
-                      <div className="summary-label">Delivery City</div>
+                      <div className="summary-label">Delivery Street</div>
                       <div className="summary-value">
-                        {formData.receiverCity}
-                        {formData.receiverArea && `, ${formData.receiverArea}`}
+                        {formData.receiverStreetName}
                       </div>
+                    </div>
+                  )}
+
+                  {roadDistance && (
+                    <div className="summary-item">
+                      <div className="summary-label">Road Distance</div>
+                      <div className="summary-value">{roadDistance.text}</div>
+                    </div>
+                  )}
+
+                  {formData.shipmentSize && (
+                    <div className="summary-item">
+                      <div className="summary-label">Package Size</div>
+                      <div className="summary-value text-capitalize">{formData.shipmentSize.toLowerCase()}</div>
                     </div>
                   )}
 
@@ -1509,17 +1658,26 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                   <Col md={6}>
                     <div className="mb-3">
                       <Form.Label>Product Name *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter product name"
-                        name="productName"
-                        value={newItemData.productName}
-                        onChange={handleNewItemChange}
-                        isInvalid={!!newItemErrors.productName}
+                      <CreatableSelect
+                        options={vendorProducts.map((product) => ({
+                          value: product.vendorProductCode,
+                          label: product.vendorProductName,
+                        }))}
+                        value={newItemData.productName ? {
+                          value: selectedProduct?.vendorProductCode || newItemData.productName,
+                          label: newItemData.productName,
+                        } : null}
+                        onChange={handleProductSelect}
+                        placeholder="Search products or type a new name..."
+                        formatCreateLabel={(value) => `Use “${value}”`}
+                        isClearable
+                        isSearchable
+                        isLoading={vendorProductsLoading}
+                        className={newItemErrors.productName ? 'is-invalid' : ''}
                       />
-                      <Form.Control.Feedback type="invalid">
+                      <div className="invalid-feedback d-block">
                         {newItemErrors.productName}
-                      </Form.Control.Feedback>
+                      </div>
                     </div>
                   </Col>
                   <Col md={3}>
