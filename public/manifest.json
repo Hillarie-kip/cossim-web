@@ -1,0 +1,19 @@
+{
+  "name": "COSSIM - Comprehensive Logistics Management Platform",
+  "short_name": "COSSIM",
+  "description": "Comprehensive logistics and package management platform with multi-role dashboards for administrators, vendors, riders, sales agents, and distribution center managers. Features real-time tracking, analytics, and comprehensive management tools.",
+  "version": "0.1.0",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#dc6545",
+  "background_color": "#ffffff"
+}

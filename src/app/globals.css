@@ -1,0 +1,167 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import '../../src/style/css/feather.css';
+@import '../../src/style/css/line-awesome.min.css';
+@import '../../src/style/icons/fontawesome/css/fontawesome.min.css';
+@import '../../src/style/icons/fontawesome/css/all.min.css';
+
+body {
+  background-color: #FFF5F5 !important;
+}
+/* Chart loading state */
+.chart-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 320px;
+  color: #666;
+  font-style: italic;
+}
+
+/* Fix dropdown clipping in Ant Design tables */
+.ant-table {
+  overflow: visible !important;
+}
+
+.ant-table-container {
+  overflow: visible !important;
+}
+
+.ant-table-content {
+  min-height: 50vh !important;
+  overflow: visible !important;
+}
+
+.ant-table-cell {
+  overflow: visible !important;
+}
+
+.ant-table-tbody > tr > td {
+  overflow: visible !important;
+}
+
+.dropdown-menu.show {
+  z-index: 9999 !important;
+}
+
+/* Ensure the date picker calendar renders above sticky table headers */
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
+/* Keep Google Places suggestions above Bootstrap modals. */
+.pac-container {
+  z-index: 20000 !important;
+}
+
+/* Shared mobile layout safeguards for tables and list pages. */
+@media (max-width: 767.98px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .content {
+    min-width: 0;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .page-header,
+  .table-top,
+  .table-top-head,
+  .table-top .d-flex,
+  .table-top-head.d-flex {
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .page-header .page-title,
+  .table-top .search-set,
+  .table-top .search-input,
+  .table-top .form-wrap,
+  .table-top .form-control,
+  .table-top .ant-select,
+  .table-top .select2-container {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .card,
+  .card-body,
+  .table-list-card,
+  .table-responsive,
+  .ant-table-wrapper,
+  .ant-spin-nested-loading,
+  .ant-spin-container,
+  .ant-table,
+  .ant-table-container {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .table-responsive,
+  .table-responsive:has(> .datatable-modern-wrapper),
+  .ant-table-content,
+  .ant-table-body {
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ant-table,
+  .ant-table-container,
+  .ant-table-content,
+  .ant-table-cell,
+  .ant-table-tbody > tr > td {
+    overflow-y: visible !important;
+  }
+
+  .card.table-list-card .table-responsive {
+    padding: 12px !important;
+  }
+
+  .card-body > table,
+  .modal-body > table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ant-table-pagination.ant-pagination,
+  .dataTables_paginate,
+  .dataTables_info {
+    max-width: 100%;
+  }
+
+  .ant-table-pagination.ant-pagination {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-inline: 0 !important;
+  }
+
+  .ant-pagination-options {
+    margin-inline-start: 0 !important;
+  }
+
+  .table-top-head {
+    justify-content: flex-start !important;
+  }
+
+  .table-top-head > li,
+  .table-top-head .btn,
+  .page-header .btn {
+    flex: 0 0 auto;
+  }
+
+  .dropdown-menu.show {
+    max-width: calc(100vw - 24px);
+  }
+}

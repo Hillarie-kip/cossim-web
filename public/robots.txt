@@ -1,0 +1,28 @@
+# COSSIM Logistics Platform - Robots.txt
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# Public pages
+Allow: /
+Allow: /track
+Allow: /about
+Allow: /contact
+
+# Restrict access to authentication and dashboard pages
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /vendor
+Disallow: /rider
+Disallow: /sales
+Disallow: /dc
+Disallow: /api
+Disallow: /_next
+Disallow: /profile
+
+# Sitemaps
+Sitemap: https://cossim.com/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1

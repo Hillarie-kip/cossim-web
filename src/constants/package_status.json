@@ -1,0 +1,1812 @@
+{
+  "Error": false,
+  "StatusCode": 200,
+  "Data": {
+    "items": [
+      {
+        "orderStatusID": 101,
+        "statusName": "Vendor Created",
+        "phaseCode": "VENDOR",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 101,
+        "description": "Vendor generated package / order.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 811,
+            "actionCode": "REQUIRE_SERVICE_FEE",
+            "actionName": "Require Service Fee",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 5
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 102,
+            "actionCode": "SUBMIT",
+            "actionName": "Ready For Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 103,
+            "actionCode": "HANDOVER_TO_DC",
+            "actionName": "Hand Over to DC Carrier",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 40
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 501,
+            "actionCode": "DISPATCH_DIRECT",
+            "actionName": "Dispatch Direct (Out for Delivery)",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 50
+          },
+          {
+            "fromOrderStatusID": 101,
+            "toOrderStatusID": 902,
+            "actionCode": "CANCEL",
+            "actionName": "Cancel Order",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 102,
+        "statusName": "Ready For Pickup from Vendor",
+        "phaseCode": "VENDOR",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 102,
+        "description": "Can be picked by DC rider/agent or third party.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 102,
+            "toOrderStatusID": 103,
+            "actionCode": "HANDOVER_TO_DC",
+            "actionName": "Hand Over to DC Carrier",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 102,
+            "toOrderStatusID": 201,
+            "actionCode": "START_INBOUND",
+            "actionName": "Start Inbound to DC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 102,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 102,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 40
+          },
+          {
+            "fromOrderStatusID": 102,
+            "toOrderStatusID": 902,
+            "actionCode": "CANCEL",
+            "actionName": "Cancel Order",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 103,
+        "statusName": "Handed to DC Carrier",
+        "phaseCode": "INBOUND",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 103,
+        "description": "Package left vendor, en-route to DC.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 103,
+            "toOrderStatusID": 201,
+            "actionCode": "INBOUND_TO_DC",
+            "actionName": "Inbound to DC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 103,
+            "toOrderStatusID": 202,
+            "actionCode": "MARK_ARRIVED_DC",
+            "actionName": "Mark Arrived at DC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          }
+        ]
+      },
+      {
+        "orderStatusID": 201,
+        "statusName": "Inbound to DC",
+        "phaseCode": "INBOUND",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 201,
+        "description": "In transit to destination DC.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 201,
+            "toOrderStatusID": 202,
+            "actionCode": "MARK_ARRIVED_DC",
+            "actionName": "Mark Arrived at DC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 202,
+        "statusName": "Arrived at DC",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 202,
+        "description": "Physically received at DC, pending QC.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 202,
+            "toOrderStatusID": 301,
+            "actionCode": "START_QC",
+            "actionName": "Start DC QC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 202,
+            "toOrderStatusID": 304,
+            "actionCode": "STOCK_IN",
+            "actionName": "Receive Into DC Stock",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 202,
+            "toOrderStatusID": 206,
+            "actionCode": "HOLD_FOR_TRANSFER",
+            "actionName": "Hold for DC?DC Transfer",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 30
+          }
+        ]
+      },
+      {
+        "orderStatusID": 206,
+        "statusName": "Hold for DC?DC Dispatch",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 206,
+        "description": "Queued at DC awaiting transfer batch",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 206,
+            "toOrderStatusID": 207,
+            "actionCode": "ADD_TO_TRANSFER_BATCH",
+            "actionName": "Add to Transfer Batch",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 206,
+            "toOrderStatusID": 304,
+            "actionCode": "REMOVE_FROM_TRANSFER",
+            "actionName": "Remove from Transfer Hold",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 207,
+        "statusName": "Batched for DC?DC Transfer",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 207,
+        "description": "Assigned to a transfer batch",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 207,
+            "toOrderStatusID": 208,
+            "actionCode": "DISPATCH_TRANSFER_BATCH",
+            "actionName": "Dispatch Transfer Batch",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 207,
+            "toOrderStatusID": 206,
+            "actionCode": "REMOVE_FROM_TRANSFER_BATCH",
+            "actionName": "Remove from Transfer Batch",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 208,
+        "statusName": "Transfer Dispatched",
+        "phaseCode": "INBOUND",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 208,
+        "description": "Batch left origin DC",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 208,
+            "toOrderStatusID": 209,
+            "actionCode": "MARK_DEPARTED",
+            "actionName": "Mark Departed (In Transit)",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 209,
+        "statusName": "Transfer Inbound to DC",
+        "phaseCode": "INBOUND",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 209,
+        "description": "Batch in transit to destination DC",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 209,
+            "toOrderStatusID": 202,
+            "actionCode": "MARK_ARRIVED_DEST_DC",
+            "actionName": "Mark Arrived at Destination DC",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 301,
+        "statusName": "DC QC In Progress",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 301,
+        "description": "Verifying package condition and contents.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 301,
+            "toOrderStatusID": 302,
+            "actionCode": "PASS_QC",
+            "actionName": "QC Passed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 301,
+            "toOrderStatusID": 303,
+            "actionCode": "FAIL_QC",
+            "actionName": "QC Failed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          }
+        ]
+      },
+      {
+        "orderStatusID": 302,
+        "statusName": "DC QC Passed",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 302,
+        "description": "Good condition; move to stock or assignment.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 302,
+            "toOrderStatusID": 304,
+            "actionCode": "STOCK_IN",
+            "actionName": "Receive Into DC Stock",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 302,
+            "toOrderStatusID": 305,
+            "actionCode": "ASSIGN_TRACKING",
+            "actionName": "Assign Tracking Number",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 302,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 302,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 40
+          }
+        ]
+      },
+      {
+        "orderStatusID": 303,
+        "statusName": "DC QC Failed",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": true,
+        "sortOrder": 303,
+        "description": "Damage/short; triggers return or rework.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 303,
+            "toOrderStatusID": 701,
+            "actionCode": "START_RETURN",
+            "actionName": "Start Return",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 303,
+            "toOrderStatusID": 702,
+            "actionCode": "RETURN_IN_TRANSIT",
+            "actionName": "Return In Transit",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 303,
+            "toOrderStatusID": 903,
+            "actionCode": "CLOSE_FAILED",
+            "actionName": "Close Failed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 304,
+        "statusName": "Received Into DC Stock",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 304,
+        "description": "Added to DC inventory.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 304,
+            "toOrderStatusID": 305,
+            "actionCode": "ASSIGN_TRACKING",
+            "actionName": "Assign Tracking Number",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 304,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 304,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 304,
+            "toOrderStatusID": 410,
+            "actionCode": "ADD_TO_MANIFEST",
+            "actionName": "Add to Delivery Batch",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "DELIVERY",
+            "sortOrder": 40
+          },
+          {
+            "fromOrderStatusID": 304,
+            "toOrderStatusID": 206,
+            "actionCode": "HOLD_FOR_TRANSFER",
+            "actionName": "Hold for DC?DC Transfer",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": "TRANSFER",
+            "sortOrder": 50
+          }
+        ]
+      },
+      {
+        "orderStatusID": 305,
+        "statusName": "Tracking Number Assigned",
+        "phaseCode": "DC",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 305,
+        "description": "Internal/external tracking set.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 305,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 305,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 305,
+            "toOrderStatusID": 403,
+            "actionCode": "ASSIGN_PACK_CENTER",
+            "actionName": "Assign to Packaging Center",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 305,
+            "toOrderStatusID": 410,
+            "actionCode": "ADD_TO_MANIFEST",
+            "actionName": "Add to Delivery Batch",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "DELIVERY",
+            "sortOrder": 40
+          }
+        ]
+      },
+      {
+        "orderStatusID": 401,
+        "statusName": "Assigned to Delivery",
+        "phaseCode": "ASSIGN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 401,
+        "description": "Door-delivery flow.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 401,
+            "toOrderStatusID": 410,
+            "actionCode": "ADD_TO_MANIFEST",
+            "actionName": "Add to Delivery Batch",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "DELIVERY",
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 401,
+            "toOrderStatusID": 501,
+            "actionCode": "OUT_FOR_DELIVERY",
+            "actionName": "Out For Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          }
+        ]
+      },
+      {
+        "orderStatusID": 402,
+        "statusName": "Assigned For Customer Pickup",
+        "phaseCode": "ASSIGN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 402,
+        "description": "Pickup at DC station.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 402,
+            "toOrderStatusID": 601,
+            "actionCode": "READY_FOR_PICKUP",
+            "actionName": "Ready for Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 403,
+        "statusName": "Assigned to Packaging Center",
+        "phaseCode": "ASSIGN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 403,
+        "description": "Send to hub for (re)pack/merge/sort.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 403,
+            "toOrderStatusID": 305,
+            "actionCode": "BACK_FROM_PACK",
+            "actionName": "Back from Pack Center",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 403,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 403,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          }
+        ]
+      },
+      {
+        "orderStatusID": 410,
+        "statusName": "Batched for Delivery",
+        "phaseCode": "ASSIGN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 410,
+        "description": "In rider manifest, waiting handover",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 410,
+            "toOrderStatusID": 501,
+            "actionCode": "HANDOVER_TO_RIDER",
+            "actionName": "Handover to Rider",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "DELIVERY",
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 410,
+            "toOrderStatusID": 401,
+            "actionCode": "REMOVE_FROM_MANIFEST",
+            "actionName": "Remove from Manifest",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": true,
+            "batchTypeCode": "DELIVERY",
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 501,
+        "statusName": "Out For Delivery",
+        "phaseCode": "DELIVERY",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 501,
+        "description": "With rider/vehicle.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 501,
+            "toOrderStatusID": 502,
+            "actionCode": "MARK_ATTEMPTED",
+            "actionName": "Delivery Attempted",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 501,
+            "toOrderStatusID": 504,
+            "actionCode": "MARK_WAITLIST",
+            "actionName": "Delivery Waitlist",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 501,
+            "toOrderStatusID": 503,
+            "actionCode": "MARK_DELIVERED",
+            "actionName": "Mark Delivered",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": true,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          }
+        ]
+      },
+      {
+        "orderStatusID": 502,
+        "statusName": "Delivery Attempted",
+        "phaseCode": "DELIVERY",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 502,
+        "description": "Customer unreachable/refused/address issue.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 502,
+            "toOrderStatusID": 501,
+            "actionCode": "REDELIVER",
+            "actionName": "Re-Attempt Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 502,
+            "toOrderStatusID": 504,
+            "actionCode": "WAITLIST",
+            "actionName": "Waitlist Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 502,
+            "toOrderStatusID": 701,
+            "actionCode": "START_RETURN",
+            "actionName": "Start Return",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 503,
+        "statusName": "Delivered to Customer",
+        "phaseCode": "DELIVERY",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 503,
+        "description": "POD captured; start payment settlement if COD.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 503,
+            "toOrderStatusID": 801,
+            "actionCode": "INITIATE_PAYMENT",
+            "actionName": "Initiate Payment",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 503,
+            "toOrderStatusID": 804,
+            "actionCode": "CONFIRM_PAYMENT",
+            "actionName": "Confirm Payment (Non-COD)",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": true,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 503,
+            "toOrderStatusID": 802,
+            "actionCode": "COLLECT_COD",
+            "actionName": "Collect COD",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": true,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          }
+        ]
+      },
+      {
+        "orderStatusID": 504,
+        "statusName": "Delivery Waitlist",
+        "phaseCode": "DELIVERY",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 504,
+        "description": "On hold waiting for customer/time window.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 504,
+            "toOrderStatusID": 501,
+            "actionCode": "RESUME_DELIVERY",
+            "actionName": "Resume Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 504,
+            "toOrderStatusID": 701,
+            "actionCode": "START_RETURN",
+            "actionName": "Start Return",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 601,
+        "statusName": "Ready for Pickup",
+        "phaseCode": "PICKUP",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 601,
+        "description": "Customer can collect at DC.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 601,
+            "toOrderStatusID": 602,
+            "actionCode": "WAIT_CUSTOMER",
+            "actionName": "Pending Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 601,
+            "toOrderStatusID": 603,
+            "actionCode": "PICKUP",
+            "actionName": "Picked Up",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": true,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 601,
+            "toOrderStatusID": 701,
+            "actionCode": "START_RETURN",
+            "actionName": "Start Return",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 602,
+        "statusName": "Pending Customer Pickup",
+        "phaseCode": "PICKUP",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 602,
+        "description": "Waiting for customer to show up.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 602,
+            "toOrderStatusID": 603,
+            "actionCode": "PICKUP",
+            "actionName": "Picked Up",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": true,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 602,
+            "toOrderStatusID": 701,
+            "actionCode": "START_RETURN",
+            "actionName": "Start Return",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 603,
+        "statusName": "Picked Up by Customer",
+        "phaseCode": "PICKUP",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 603,
+        "description": "Collected; close or settle payment.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 603,
+            "toOrderStatusID": 801,
+            "actionCode": "INITIATE_PAYMENT",
+            "actionName": "Initiate Payment",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 603,
+            "toOrderStatusID": 804,
+            "actionCode": "CONFIRM_PAYMENT",
+            "actionName": "Confirm Payment (Non-COD)",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": true,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 603,
+            "toOrderStatusID": 802,
+            "actionCode": "COLLECT_COD",
+            "actionName": "Collect COD",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": true,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          }
+        ]
+      },
+      {
+        "orderStatusID": 701,
+        "statusName": "Return Requested by Customer",
+        "phaseCode": "RETURN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 701,
+        "description": "Customer declined/return asked.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 701,
+            "toOrderStatusID": 702,
+            "actionCode": "RETURN_IN_TRANSIT",
+            "actionName": "Return In Transit",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 701,
+            "toOrderStatusID": 703,
+            "actionCode": "RETURN_TO_VENDOR",
+            "actionName": "Returned to Vendor",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          }
+        ]
+      },
+      {
+        "orderStatusID": 702,
+        "statusName": "Return In Transit",
+        "phaseCode": "RETURN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 702,
+        "description": "En-route back to DC/vendor.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 702,
+            "toOrderStatusID": 703,
+            "actionCode": "RETURN_TO_VENDOR",
+            "actionName": "Returned to Vendor",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 703,
+        "statusName": "Returned to Vendor",
+        "phaseCode": "RETURN",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 703,
+        "description": "Received at vendor.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 703,
+            "toOrderStatusID": 704,
+            "actionCode": "CLOSE_RETURN",
+            "actionName": "Close Return",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 704,
+        "statusName": "Return Closed",
+        "phaseCode": "RETURN",
+        "isTerminal": true,
+        "isFailure": false,
+        "sortOrder": 704,
+        "description": "Return reconciled (stock/payment adjusted).",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 704,
+            "toOrderStatusID": 901,
+            "actionCode": "CLOSE_SUCCESS",
+            "actionName": "Close Success",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 801,
+        "statusName": "Payment Initiated",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 801,
+        "description": "DC or rider initiated payment process.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 801,
+            "toOrderStatusID": 802,
+            "actionCode": "COLLECT_COD",
+            "actionName": "Collect COD",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": true,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 801,
+            "toOrderStatusID": 804,
+            "actionCode": "CONFIRM_PAYMENT",
+            "actionName": "Confirm Payment",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 801,
+            "toOrderStatusID": 805,
+            "actionCode": "FAIL_PAYMENT",
+            "actionName": "Payment Failed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 802,
+        "statusName": "COD Collected",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 802,
+        "description": "Cash received by rider/DC.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 802,
+            "toOrderStatusID": 803,
+            "actionCode": "REMIT_COD",
+            "actionName": "Remit COD to Vendor",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": true,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 802,
+            "toOrderStatusID": 804,
+            "actionCode": "CONFIRM_PAYMENT",
+            "actionName": "Confirm Payment",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          }
+        ]
+      },
+      {
+        "orderStatusID": 803,
+        "statusName": "COD Remitted to Vendor",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 803,
+        "description": "Cash transferred to vendor.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 803,
+            "toOrderStatusID": 804,
+            "actionCode": "CONFIRM_PAYMENT",
+            "actionName": "Confirm Payment",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 804,
+        "statusName": "Payment Confirmed",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 804,
+        "description": "Funds settled; ready to close.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 804,
+            "toOrderStatusID": 901,
+            "actionCode": "CLOSE_SUCCESS",
+            "actionName": "Close Success",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          }
+        ]
+      },
+      {
+        "orderStatusID": 805,
+        "statusName": "Payment Failed",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": true,
+        "sortOrder": 805,
+        "description": "Reversal/timeout/chargeback.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 805,
+            "toOrderStatusID": 801,
+            "actionCode": "RETRY_PAYMENT",
+            "actionName": "Retry Payment",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 805,
+            "toOrderStatusID": 902,
+            "actionCode": "CLOSE_CANCELLED",
+            "actionName": "Close Cancelled",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 80
+          },
+          {
+            "fromOrderStatusID": 805,
+            "toOrderStatusID": 903,
+            "actionCode": "CLOSE_FAILED",
+            "actionName": "Close Failed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 811,
+        "statusName": "Service Fee Required",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 811,
+        "description": "Order requires service fee before processing.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 811,
+            "toOrderStatusID": 812,
+            "actionCode": "INITIATE_SERVICE_FEE",
+            "actionName": "Initiate Service Fee",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 811,
+            "toOrderStatusID": 815,
+            "actionCode": "WAIVE_SERVICE_FEE",
+            "actionName": "Waive Service Fee",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 80
+          }
+        ]
+      },
+      {
+        "orderStatusID": 812,
+        "statusName": "Service Fee Initiated",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 812,
+        "description": "Payment process started for service fee.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 812,
+            "toOrderStatusID": 813,
+            "actionCode": "CONFIRM_SERVICE_FEE",
+            "actionName": "Confirm Service Fee Paid",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 812,
+            "toOrderStatusID": 814,
+            "actionCode": "FAIL_SERVICE_FEE",
+            "actionName": "Mark Service Fee Failed",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 90
+          }
+        ]
+      },
+      {
+        "orderStatusID": 813,
+        "statusName": "Service Fee Paid",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 813,
+        "description": "Service fee successfully paid.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 813,
+            "toOrderStatusID": 102,
+            "actionCode": "READY_FOR_PICKUP_AFTER_SF",
+            "actionName": "Ready For Pickup (after Service Fee)",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 813,
+            "toOrderStatusID": 103,
+            "actionCode": "HANDOVER_TO_DC_AFTER_SF",
+            "actionName": "Hand Over to DC Carrier",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 813,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY_AFTER_SF",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 813,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP_AFTER_SF",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 40
+          },
+          {
+            "fromOrderStatusID": 813,
+            "toOrderStatusID": 501,
+            "actionCode": "DISPATCH_DIRECT_AFTER_SF",
+            "actionName": "Dispatch Direct (Out for Delivery)",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 50
+          }
+        ]
+      },
+      {
+        "orderStatusID": 814,
+        "statusName": "Service Fee Failed",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": true,
+        "sortOrder": 814,
+        "description": "Service fee payment failed.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 814,
+            "toOrderStatusID": 812,
+            "actionCode": "RETRY_SERVICE_FEE",
+            "actionName": "Retry Service Fee",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 15
+          },
+          {
+            "fromOrderStatusID": 814,
+            "toOrderStatusID": 902,
+            "actionCode": "CANCEL",
+            "actionName": "Cancel Order",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 85
+          }
+        ]
+      },
+      {
+        "orderStatusID": 815,
+        "statusName": "Service Fee Waived",
+        "phaseCode": "PAYMENT",
+        "isTerminal": false,
+        "isFailure": false,
+        "sortOrder": 815,
+        "description": "Service fee waived by policy/admin override.",
+        "totalCount": 42,
+        "StatusTransitionArray": [
+          {
+            "fromOrderStatusID": 815,
+            "toOrderStatusID": 102,
+            "actionCode": "READY_FOR_PICKUP_AFTER_SF",
+            "actionName": "Ready For Pickup (after Waiver)",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 10
+          },
+          {
+            "fromOrderStatusID": 815,
+            "toOrderStatusID": 103,
+            "actionCode": "HANDOVER_TO_DC_AFTER_SF",
+            "actionName": "Hand Over to DC Carrier",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 20
+          },
+          {
+            "fromOrderStatusID": 815,
+            "toOrderStatusID": 401,
+            "actionCode": "ASSIGN_DELIVERY_AFTER_SF",
+            "actionName": "Assign to Delivery",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 30
+          },
+          {
+            "fromOrderStatusID": 815,
+            "toOrderStatusID": 402,
+            "actionCode": "ASSIGN_PICKUP_AFTER_SF",
+            "actionName": "Assign for Customer Pickup",
+            "requiresDeliveryFlow": false,
+            "requiresPickupFlow": true,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 40
+          },
+          {
+            "fromOrderStatusID": 815,
+            "toOrderStatusID": 501,
+            "actionCode": "DISPATCH_DIRECT_AFTER_SF",
+            "actionName": "Dispatch Direct (Out for Delivery)",
+            "requiresDeliveryFlow": true,
+            "requiresPickupFlow": false,
+            "requiresCOD": false,
+            "requiresPOD": false,
+            "isBatchAction": false,
+            "batchTypeCode": null,
+            "sortOrder": 50
+          }
+        ]
+      },
+      {
+        "orderStatusID": 901,
+        "statusName": "Closed (Success)",
+        "phaseCode": "CLOSED",
+        "isTerminal": true,
+        "isFailure": false,
+        "sortOrder": 901,
+        "description": "Delivered or picked up, payment settled.",
+        "totalCount": 42,
+        "StatusTransitionArray": []
+      },
+      {
+        "orderStatusID": 902,
+        "statusName": "Closed (Cancelled)",
+        "phaseCode": "CLOSED",
+        "isTerminal": true,
+        "isFailure": true,
+        "sortOrder": 902,
+        "description": "Cancelled before fulfillment.",
+        "totalCount": 42,
+        "StatusTransitionArray": []
+      },
+      {
+        "orderStatusID": 903,
+        "statusName": "Closed (Failed)",
+        "phaseCode": "CLOSED",
+        "isTerminal": true,
+        "isFailure": true,
+        "sortOrder": 903,
+        "description": "Irrecoverable failure.",
+        "totalCount": 42,
+        "StatusTransitionArray": []
+      }
+    ],
+    "total": 42,
+    "pageNo": 1,
+    "pageSize": 50
+  }
+}

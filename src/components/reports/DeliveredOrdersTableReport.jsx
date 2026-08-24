@@ -1,0 +1,142 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import Datatable from "@/core/pagination/datatable";
+import { getHandoverBatchList, getShipmentOrders } from "@/services/shipmentService";
+import notify from "@/lib/toast";
+import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+
+const money = (value) => Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const text = (value) => value || "-";
+
+export default function DeliveredOrdersTableReport({
+  title = "Delivered Orders",
+  description = "Delivered shipment orders",
+  taskType = "delivered",
+  statusIDs = "303",
+  allowPayment = false,
+  emptyTitle = "No delivered orders found",
+} = {}) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 1000, total: 0 });
+  const { filters: navigationFilters } = useGlobalFilters();
+  const isConsolidated = taskType === "consolidated";
+
+  const loadReport = async ({
+    page = pagination.current,
+    pageSize = pagination.pageSize,
+    search = searchTerm,
+  } = {}) => {
+    const normalizedSearch = search.trim();
+    setLoading(true);
+    try {
+      const response = isConsolidated
+        ? await getHandoverBatchList({
+          pageNo: page,
+          pageSize,
+          search: normalizedSearch || undefined,
+          statusIDs: "1,3",
+          FromDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
+          startDate: navigationFilters.startDate || undefined,
+          endDate: navigationFilters.endDate || undefined,
+          orderBy: "DateAdded",
+          sortDir: "DESC",
+        })
+        : await getShipmentOrders({
+          pageNo: page,
+          pageSize,
+          taskType,
+          statusIDs,
+          checkSLA: false,
+          searchTerm: normalizedSearch || undefined,
+          vendorCode: navigationFilters.vendorCode || undefined,
+          ...(["delivered", "completed"].includes(taskType)
+            ? { toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined }
+            : { fromDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined }),
+          startDate: navigationFilters.startDate || undefined,
+          endDate: navigationFilters.endDate || undefined,
+          orderBy: "DateAdded",
+          sortDir: "DESC",
+        });
+      const responseRows = Array.isArray(response?.Data) ? response.Data : [];
+      setRows(isConsolidated
+        ? responseRows.filter((row) => [1, 3].includes(Number(row.StatusID)))
+        : responseRows);
+      setPagination({ current: Number(response?.PageNO || page), pageSize: Number(response?.PageSize || pageSize), total: Number(response?.TotalCount || 0) });
+    } catch (error) {
+      setRows([]);
+      notify.error(error.message || `Failed to load ${isConsolidated ? "consolidated batches" : "orders"}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadReport({ page: 1, pageSize: 1000 }); }, [navigationFilters.startDate, navigationFilters.endDate, navigationFilters.vendorCode, navigationFilters.dcCode]);
+
+  const columns = useMemo(() => isConsolidated ? [
+    { title: "Handover code", dataIndex: "HandoverCode", width: 220, render: (value) => <strong className="text-primary">{text(value)}</strong> },
+    { title: "Source DC", dataIndex: "FromDCName", width: 210, render: (_, row) => <div><strong>{text(row.FromDCName || row.FromDCCode)}</strong><small className="d-block text-muted">{text(row.FromDCCode)}</small></div> },
+    { title: "Destination DC", dataIndex: "ToDCName", width: 210, render: (_, row) => <div><strong>{text(row.ToDCName || row.ToDCCode)}</strong><small className="d-block text-muted">{text(row.ToDCCode)}</small></div> },
+    { title: "Rider", dataIndex: "RiderName", width: 190, render: (_, row) => <div><strong>{text(row.RiderName || "Unassigned")}</strong><small className="d-block text-muted">{text(row.RiderUserCode)}</small></div> },
+    { title: "Status", dataIndex: "StatusID", width: 150, render: (value) => Number(value) === 3 ? "Received" : Number(value) === 1 ? "Pending Receipt" : "-" },
+    { title: "Created by", dataIndex: "CreatedBy", width: 170, render: text },
+    { title: "Notes", dataIndex: "Notes", width: 260, ellipsis: true, render: text },
+    { title: "Date created", dataIndex: "DateAdded", width: 180, render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
+  ] : [
+    { title: "Order number", dataIndex: "OrderNO", width: 210, render: (value) => <strong className="text-primary">{text(value)}</strong> },
+    { title: "Vendor", dataIndex: "VendorName", width: 210, render: (_, row) => <div><strong>{text(row.VendorName || row.SenderCompanyName)}</strong><small className="d-block text-muted">{text(row.VendorCode)}</small></div> },
+    { title: "Receiver", dataIndex: "ReceiverContactName", width: 210, render: (_, row) => <div><strong>{text(row.ReceiverContactName)}</strong><small className="d-block text-muted">{text(row.ReceiverContactPhone)}</small></div> },
+    { title: "Origin", dataIndex: "OriginDCName", width: 180, render: (_, row) => text(row.OriginDCName || row.OriginDCCode) },
+    { title: "Destination", dataIndex: "DestinationDCName", width: 180, render: (_, row) => text(row.DestinationDCName || row.DestinationDCCode) },
+    { title: "Delivery type", dataIndex: "DeliveryType", width: 150, render: text },
+    { title: "Service fee", dataIndex: "ServiceFee", width: 140, align: "right", render: (value) => `KES ${money(value)}` },
+    { title: "COD", dataIndex: "CODAmount", width: 140, align: "right", render: (value) => `KES ${money(value)}` },
+    { title: "Date", dataIndex: "DateAdded", width: 180, render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
+    ...(allowPayment ? [{
+      title: "Action",
+      dataIndex: "OrderNO",
+      width: 140,
+      fixed: "right",
+      render: (orderNO) => (
+        <Link className="btn btn-sm btn-primary" href={`/admin/cod-payment?orderNO=${encodeURIComponent(orderNO)}&returnTo=${encodeURIComponent("/admin/reports/delivered-orders")}`}>
+          Add Payment
+        </Link>
+      ),
+    }] : []),
+  ], [allowPayment, isConsolidated]);
+
+  return <div className="content">
+    <div className="page-header"><div className="page-title"><h4>{title}</h4><h6>{description}</h6></div></div>
+    <div className="card table-list-card">
+      <div className="card-body">
+        <div className="row g-2 align-items-end mb-3">
+          <div className="col-lg-9"><label className="form-label">Search</label><input className="form-control" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") loadReport({ page: 1, search: event.currentTarget.value }); }} placeholder={isConsolidated ? "Handover code, shipment no., source DC, or destination DC" : "Order number, vendor, customer, or DC"} /></div>
+          <div className="col-lg-3 d-flex gap-2"><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
+        </div>
+        <Datatable
+          className="table"
+          columns={columns}
+          dataSource={rows}
+          rowKey={isConsolidated ? "HandoverCode" : "OrderNO"}
+          loading={loading}
+          scroll={{ x: isConsolidated ? 1560 : 1750, y: 600 }}
+          emptyTitle={emptyTitle}
+          emptyDescription={`No ${isConsolidated ? "handover batches" : "orders"} match the selected filters.`}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: true,
+            pageSizeOptions: ["100", "500", "1000"],
+            showQuickJumper: true,
+            showTotal: (total) => `${total} ${isConsolidated ? "batches" : "orders"}`,
+            onChange: (page, pageSize) => loadReport({ page, pageSize, search: searchTerm }),
+          }}
+        />
+      </div>
+    </div>
+  </div>;
+}

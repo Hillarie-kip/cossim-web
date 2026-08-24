@@ -1,0 +1,43 @@
+/* DC Overview Custom Styles */
+
+.hover-translate-y {
+    transition: transform 0.3s ease;
+}
+
+.hover-translate-y:hover {
+    transform: translateY(-5px);
+}
+
+.transition-all {
+    transition: all 0.3s ease;
+}
+
+.border-bottom-dashed {
+    border-bottom: 1px dashed #dbe0e6;
+}
+
+.border-bottom-dashed:last-child {
+    border-bottom: none;
+}
+
+/* Light background variants if not already in theme */
+.bg-light-primary { background-color: rgba(255, 98, 0, 0.1) !important; }
+.bg-light-success { background-color: rgba(40, 199, 111, 0.1) !important; }
+.bg-light-info { background-color: rgba(23, 162, 184, 0.1) !important; }
+.bg-light-warning { background-color: rgba(255, 153, 0, 0.1) !important; }
+.bg-light-danger { background-color: rgba(255, 0, 0, 0.1) !important; }
+
+/* Spin animation for refresh button */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Hover shadow effects */
+.hover-shadow-sm:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+}
