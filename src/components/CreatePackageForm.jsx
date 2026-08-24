@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PaymentStep from '@/components/PaymentStep';
 import '@/style/css/create-package.css';
 import notify from '@/lib/toast';
+import { getSelectedDC } from '@/services/dcService';
 
 const loadGooglePlaces = () => {
   if (window.google?.maps?.places) return Promise.resolve(true);
@@ -627,7 +628,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         vendorStoreCode: formData.vendorStoreCode || '',
         deliveryTypeCode: formData.deliveryTypeCode,
         originDCCode: originDC,
-        destinationDCCode: '',
+        destinationDCCode: getSelectedDC() || '',
         AddedBy:user?.UserCode,
         // Shipping rate and fees
         shipmentRateNO: shippingRate?.ShipmentRateNO || '',
