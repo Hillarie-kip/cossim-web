@@ -7,10 +7,13 @@ import Swal from "sweetalert2";
 import { getDistributionCenters } from "@/services/adminService";
 import { completeStockTake, scanStockTakeItem, startStockTake } from "@/services/inventoryService";
 import notify from "@/lib/toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const number = (value) => Number(value || 0).toLocaleString("en-KE");
 
 export default function StockTakeWorkflow() {
+  const { user } = useAuth();
   const [centres, setCentres] = useState([]);
   const [dcCode, setDcCode] = useState("");
   const [session, setSession] = useState(null);
@@ -21,9 +24,9 @@ export default function StockTakeWorkflow() {
 
   useEffect(() => {
     getDistributionCenters({ pageNo: 1, pageSize: 1000 })
-      .then((response) => setCentres(Array.isArray(response?.Data) ? response.Data : []))
+      .then((response) => setCentres(filterDistributionCentersToAssigned(user, Array.isArray(response?.Data) ? response.Data : [])))
       .catch((error) => notify.error(error.message || "Failed to load distribution centres."));
-  }, []);
+  }, [user]);
 
   const begin = async () => {
     if (!dcCode) return notify.warning("Select a distribution centre.");

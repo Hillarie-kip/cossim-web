@@ -42,6 +42,7 @@ import { formatLocalDateOnly } from "@/lib/utils/dateFormat";
 import { exportColumns, pdfColumns } from "./components/tableColumns";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const getStatusName = (status) =>
   status?.statusName ||
@@ -461,7 +462,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   } = useAdmin();
   const scopedVendorCode = isVendorOnly ? loggedInVendorCode : vendorCode;
   const rawGlobalDCFilter = String(globalFilters.dcCodes || globalFilters.dcCode || "");
-  const assignedGlobalDCCodes = (Array.isArray(distributionCenters) ? distributionCenters : [])
+  const assignedDistributionCenters = useMemo(() => filterDistributionCentersToAssigned(user, distributionCenters), [user, distributionCenters]);
+  const assignedGlobalDCCodes = assignedDistributionCenters
     .map((dc) => dc.DCCode || dc.dcCode)
     .filter(Boolean);
   const selectedGlobalDCCodes = (rawGlobalDCFilter === "__ALL__" ? assignedGlobalDCCodes : rawGlobalDCFilter.split(","))
@@ -641,7 +643,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const apiShipmentOrderList = Array.isArray(shipmentOrders) ? shipmentOrders : [];
   const shipmentOrderList = apiShipmentOrderList;
   const vendorList = Array.isArray(vendors) ? vendors : [];
-  const distributionCenterList = Array.isArray(distributionCenters) ? distributionCenters : [];
+  const distributionCenterList = assignedDistributionCenters;
 
   useEffect(() => {
     let active = true;
@@ -1336,7 +1338,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     return value ? String(value).replace(/\D/g, "") : "";
   };
 
-  const collectDeliveryDetails = async (action, onConfirm, onSendPrompt) => {
+  const collectDeliveryDetails = async (action, onConfirm, onSendPrompt, requiresPayment = true) => {
     const paymentOptions = [
       { value: "prompt", label: "Prompt" },
       { value: "cod", label: "Cash on Delivery" },
@@ -1346,11 +1348,11 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       title: "Delivery",
       html: (
         <div className="delivery-completion-form">
-          <label className="form-label fw-semibold">Payment option</label>
+          {requiresPayment && <><label className="form-label fw-semibold">Payment option</label>
           <div className="delivery-payment-options">
             {paymentOptions.map((option) => <label key={option.value} className="delivery-payment-option"><input type="checkbox" name="delivery-payment" value={option.value} /><span>{option.label}</span></label>)}
-          </div>
-          <div id="delivery-prompt-phone-wrap" className="mt-3 d-none">
+          </div></>}
+          {requiresPayment && <><div id="delivery-prompt-phone-wrap" className="mt-3 d-none">
             <label className="form-label fw-semibold" htmlFor="delivery-prompt-phone">M-Pesa phone number</label>
             <div className="input-group">
               <input id="delivery-prompt-phone" type="tel" className="form-control" placeholder="07XXXXXXXX or 2547XXXXXXXX" />
@@ -1361,7 +1363,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           <div id="delivery-reference-wrap" className="mt-3 d-none">
             <label className="form-label fw-semibold" htmlFor="delivery-reference">Payment reference number</label>
             <input id="delivery-reference" type="text" className="form-control" placeholder="Enter payment reference number" />
-          </div>
+          </div></>}
           <div className="mt-3">
             <label className="form-label fw-semibold" htmlFor="delivery-notes">Notes</label>
             <textarea id="delivery-notes" className="form-control" rows="3" placeholder="Add delivery notes" />
@@ -1381,7 +1383,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const promptButton = document.getElementById("delivery-send-prompt");
         const phoneInput = document.getElementById("delivery-prompt-phone");
         const confirmButton = Swal.getConfirmButton();
-        if (confirmButton) confirmButton.disabled = true;
+        if (confirmButton) confirmButton.disabled = requiresPayment;
         phoneInput?.addEventListener("input", () => {
           promptConfirmation = null;
           promptButton.disabled = false;
@@ -1417,8 +1419,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         }));
       },
       preConfirm: async () => {
-        const payment = document.querySelector('input[name="delivery-payment"]:checked')?.value;
-        if (!payment) return Swal.showValidationMessage("Choose a payment option");
+        const payment = requiresPayment ? document.querySelector('input[name="delivery-payment"]:checked')?.value : "none";
+        if (requiresPayment && !payment) return Swal.showValidationMessage("Choose a payment option");
         const phone = String(document.getElementById("delivery-prompt-phone")?.value || "").replace(/\D/g, "");
         if (payment === "prompt" && !/^(?:0?7\d{8}|2547\d{8})$/.test(phone)) return Swal.showValidationMessage("Enter a valid Kenyan mobile number");
         if (payment === "prompt" && !promptConfirmation) return Swal.showValidationMessage("Click Send Prompt and wait for payment confirmation first");
@@ -1504,13 +1506,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           extra: { riderCode: "", riderLabel: "" },
         }));
       } else if (action === "pus" || action === "complete") {
+        const codOrders = orders.filter((order) => Boolean(order.CashOnDeliveryRequired) && Number(order.CODAmount || 0) > 0);
+        const requiresPayment = codOrders.length > 0;
         const paymentOptions = {
           prompt: "Prompt",
           cod: "Cash on Delivery",
+          none: "No payment required",
         };
         const deliveryDetails = await collectDeliveryDetails(action, async ({ payment, reference, notes, promptConfirmation }) => {
           const confirmedPayments = promptConfirmation || {};
-          await Promise.all(orders.map((order) => {
+          await Promise.all(codOrders.map((order) => {
             const confirmedPayment = confirmedPayments[order.OrderNO] || {};
             const transactionID = confirmedPayment.TransID || confirmedPayment.transID || reference;
             const amountPaid = Number(confirmedPayment.Amount || confirmedPayment.amount || order.CODAmount || 0);
@@ -1535,12 +1540,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
             };
           });
         }, async (promptPhone) => {
-          const promptResponses = await Promise.all(orders.map((order) => requestSTKPush({ phoneNumber: promptPhone, orderNO: order.OrderNO, isCashOnDelivery: Boolean(order.CashOnDeliveryRequired) })));
+          const promptResponses = await Promise.all(codOrders.map((order) => requestSTKPush({ phoneNumber: promptPhone, orderNO: order.OrderNO, isCashOnDelivery: true })));
           const failedPrompt = promptResponses.find((result) => result?.Error);
           if (failedPrompt) throw new Error(failedPrompt.Message || "M-Pesa prompt could not be sent");
           const confirmations = await Promise.all(promptResponses.map((response) => waitForStkConfirmation(response?.Response?.CheckoutRequestID ?? response?.response?.checkoutRequestID ?? response?.CheckoutRequestID)));
-          return Object.fromEntries(orders.map((order, index) => [order.OrderNO, confirmations[index]]));
-        });
+          return Object.fromEntries(codOrders.map((order, index) => [order.OrderNO, confirmations[index]]));
+        }, requiresPayment);
         if (!deliveryDetails) return;
         notify.success(`${orders.length} delivery${orders.length === 1 ? "" : "ies"} confirmed`);
       } else if (action === "schedule") {
@@ -2267,7 +2272,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           <div className="d-flex flex-column gap-2 py-1">
             <button
               type="button"
-              className="packages-order-link fw-semibold text-primary text-truncate"
+              className="packages-order-link fw-semibold text-primary"
               title={getDisplayText(record.OrderNO)}
               onClick={() => setDetailOrder(record)}
             >
@@ -2315,7 +2320,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <strong>{timing.difference}</strong>
             </div>
             <span className="packages-date-time">Expected {timing.expected}</span>
-            <span className={`packages-date-time ${detailPanelOrder ? "allow-wrap" : ""}`}>
+            <span className="packages-date-time allow-wrap">
               {date ? date.toLocaleString("en-GB") : "-"}
             </span>
           </div>
@@ -2356,6 +2361,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <TruncatedText value={record.ReceiverContactName} className="fw-medium" />
             </div>
             <TruncatedText value={record.ReceiverContactPhone} className="text-muted small" />
+            <TruncatedText value={record.ReceiverStreetName || record.ReceiverAddress} className="text-muted small packages-receiver-street" />
           </div>
         </div>
       ),
@@ -2426,7 +2432,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         </div>
       ),
     },
-  ].filter((column) => !["OriginDCName", "LatestLogDCName"].includes(column.dataIndex));
+  ].filter((column) => !["OriginDCName", "LatestLogDCName"].includes(column.dataIndex))
+    .map((column) => ({ ...column, ellipsis: false }));
 
   const inboundBatchColumns = [
     {
@@ -3271,10 +3278,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-table-ellipsis {
           display: block;
           max-width: 100%;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          overflow: visible;
+          overflow-wrap: anywhere;
+          text-overflow: clip;
+          white-space: normal;
         }
+
+        .packages-order-link,
+        .packages-receiver-street { overflow-wrap: anywhere; white-space: normal; }
 
         .packages-person-cell {
           min-width: 0;

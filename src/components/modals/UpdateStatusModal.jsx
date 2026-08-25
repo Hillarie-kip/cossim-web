@@ -6,8 +6,11 @@ import SSRSelect from "@/components/SSRSelect";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useShipment } from "@/hooks/useShipment";
 import { RoleType } from "@/constants/user-roles";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const UpdateStatusModal = ({ show, onClose, onSubmit, onSuccess, order, userRole = 'admin' }) => {
+  const { user } = useAuth();
   const router = useRouter();
   const { usersByRole, fetchUsersByRole, distributionCenters, fetchDistributionCenters, loading: ridersLoading } = useAdmin();
   const { handlePostRiderManifestTx } = useShipment();
@@ -78,7 +81,7 @@ const UpdateStatusModal = ({ show, onClose, onSubmit, onSuccess, order, userRole
   })) || [];
 
   // Distribution center options for reassignment
-  const dcOptions = distributionCenters?.map(dc => ({
+  const dcOptions = filterDistributionCentersToAssigned(user, distributionCenters).map(dc => ({
     value: dc.DCCode,
     label: `${dc.DCName} (${dc.DCCode})`,
     dc: dc

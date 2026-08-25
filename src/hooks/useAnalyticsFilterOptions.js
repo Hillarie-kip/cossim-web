@@ -2,6 +2,8 @@ import { useEffect, useMemo } from "react";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useShipment } from "@/hooks/useShipment";
 import { useVendors } from "@/hooks/useVendors";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const firstValue = (item, keys) => {
   for (const key of keys) {
@@ -13,6 +15,7 @@ const firstValue = (item, keys) => {
 };
 
 export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
+  const { user } = useAuth();
   const { vendors, loading: vendorsLoading } = useVendors({
     pageNo: 1,
     pageSize: 500,
@@ -60,7 +63,7 @@ export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
 
   const dcOptions = useMemo(
     () =>
-      (distributionCenters || [])
+      filterDistributionCentersToAssigned(user, distributionCenters)
         .map((dc) => {
           const code = firstValue(dc, ["DCCode", "dcCode"]);
           const name = firstValue(dc, ["DCName", "dcName", "Name", "name"]);
@@ -69,7 +72,7 @@ export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
             : null;
         })
         .filter(Boolean),
-    [distributionCenters]
+    [distributionCenters, user]
   );
 
   const deliveryTypeOptions = useMemo(

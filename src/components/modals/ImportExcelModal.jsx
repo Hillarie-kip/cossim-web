@@ -7,6 +7,7 @@ import { useShipment } from '@/hooks/useShipment';
 import { useAdmin } from '@/hooks/useAdmin';
 import notify from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { filterDistributionCentersToAssigned } from '@/services/dcService';
 
 export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInput = false }) => {
   const { user } = useAuth();
@@ -187,10 +188,10 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
               name="selectedSortingCentre"
               value={selectedSortingCentre}
               onChange={setSelectedSortingCentre}
-              options={Array.isArray(distributionCenters) ? distributionCenters.map((dc) => ({
+              options={filterDistributionCentersToAssigned(user, distributionCenters).map((dc) => ({
                 value: dc.DCCode,
                 label: `${dc.DCName} (${dc.DCCode})`,
-              })) : []}
+              }))}
               placeholder="Select destination sorting centre..."
               isClearable
               isSearchable

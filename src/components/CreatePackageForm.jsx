@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PaymentStep from '@/components/PaymentStep';
 import '@/style/css/create-package.css';
 import notify from '@/lib/toast';
-import { getSelectedDC } from '@/services/dcService';
+import { filterDistributionCentersToAssigned, getSelectedDC } from '@/services/dcService';
 import { getShipmentFieldSuggestions, getShipmentProductNames } from '@/services/shipmentService';
 
 const WALK_IN_VENDOR = { value: '__WALK_IN__', label: 'Walk-in / Default pricing', isWalkIn: true };
@@ -421,7 +421,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const [newItemErrors, setNewItemErrors] = useState({});
 
   // Create options for Select components
-  const dcOptions = distributionCenters.map((dc) => ({
+  const assignedDistributionCenters = useMemo(() => filterDistributionCentersToAssigned(user, distributionCenters), [user, distributionCenters]);
+  const dcOptions = assignedDistributionCenters.map((dc) => ({
     value: dc.DCCode,
     label: `${dc.DCCode === 'DC-UB' ? 'KCS House' : dc.DCName} (${dc.DCCode})`
   }));
@@ -457,14 +458,15 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   }, []);
 
   useEffect(() => {
-    if (formData.originDCCode || !distributionCenters.length) return;
-    const kcsHouse = distributionCenters.find((dc) =>
+    if (formData.originDCCode || !assignedDistributionCenters.length) return;
+    const kcsHouse = assignedDistributionCenters.find((dc) =>
       String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs house'))
-      || distributionCenters.find((dc) => (dc.DCCode ?? dc.dcCode) === 'DC-UB')
-      || distributionCenters.find((dc) =>
+      || assignedDistributionCenters.find((dc) => (dc.DCCode ?? dc.dcCode) === 'DC-UB')
+      || assignedDistributionCenters.find((dc) =>
         String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs sorting center'));
-    if (kcsHouse) setFormData((current) => ({ ...current, originDCCode: kcsHouse.DCCode ?? kcsHouse.dcCode }));
-  }, [distributionCenters, formData.originDCCode]);
+    const assignedDefault = kcsHouse || assignedDistributionCenters[0];
+    if (assignedDefault) setFormData((current) => ({ ...current, originDCCode: assignedDefault.DCCode ?? assignedDefault.dcCode }));
+  }, [assignedDistributionCenters, formData.originDCCode]);
 
   useEffect(() => {
     setFormData((current) => ({

@@ -13,6 +13,8 @@ import { all_routes } from "@/Router/all_routes";
 import { postShipmentHandoverBatch } from "@/services/shipmentService";
 import { useAdmin } from "@/hooks/useAdmin";
 import BatchScanStep from "@/components/batches/BatchScanStep";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const readConsolidationOrders = () => {
   if (typeof window === "undefined") return [];
@@ -25,6 +27,7 @@ const readConsolidationOrders = () => {
 };
 
 export default function CreateHandoverBatch() {
+  const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromTasks = searchParams.get("source") === "tasks";
@@ -45,15 +48,19 @@ export default function CreateHandoverBatch() {
     value: dc.DCCode,
     label: `${dc.DCCode} - ${dc.DCName}${dc.CityName ? ` (${dc.CityName})` : ""}`,
   })), [distributionCenters]);
+  const assignedDCOptions = useMemo(() => filterDistributionCentersToAssigned(user, distributionCenters).map((dc) => ({
+    value: dc.DCCode,
+    label: `${dc.DCCode} - ${dc.DCName}${dc.CityName ? ` (${dc.CityName})` : ""}`,
+  })), [user, distributionCenters]);
   const courierOptions = useMemo(() => (Array.isArray(couriers) ? couriers : [])
     .filter((courier) => courier.IsActive && !courier.IsDeleted)
     .map((courier) => ({ value: courier.CourierCode, label: `${courier.CourierName} - ${courier.CourierCode}` })), [couriers]);
 
   useEffect(() => {
     if (form.fromDCCode || sourceOrders.length === 0 || dcOptions.length === 0) return;
-    const origin = dcOptions.find((option) => option.value === sourceOrders[0]?.OriginDCCode);
+    const origin = assignedDCOptions.find((option) => option.value === sourceOrders[0]?.OriginDCCode);
     if (origin) setForm((previous) => ({ ...previous, fromDCCode: origin }));
-  }, [dcOptions, form.fromDCCode, sourceOrders]);
+  }, [assignedDCOptions, form.fromDCCode, sourceOrders]);
 
   useEffect(() => {
     if (!reversedMode || form.toDCCode || dcOptions.length === 0) return;
@@ -118,7 +125,7 @@ export default function CreateHandoverBatch() {
           <div className="row">
             <div className="col-lg-4 mb-3">
               <label className="form-label fw-bold">From Distribution Center *</label>
-              <Select value={form.fromDCCode} options={dcOptions} onChange={(value) => setForm((old) => ({ ...old, fromDCCode: value }))} isDisabled={fromTasks && Boolean(form.fromDCCode)} isSearchable placeholder="Select source DC" />
+              <Select value={form.fromDCCode} options={assignedDCOptions} onChange={(value) => setForm((old) => ({ ...old, fromDCCode: value }))} isDisabled={fromTasks && Boolean(form.fromDCCode)} isSearchable placeholder="Select source DC" />
             </div>
             <div className="col-lg-4 mb-3">
               <label className="form-label fw-bold">Destination {reversedMode && <small className="text-muted">(HQ by default)</small>} *</label>

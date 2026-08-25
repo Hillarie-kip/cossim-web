@@ -82,6 +82,19 @@ export const getAssignedDCs = (user) => {
 };
 
 /**
+ * Restrict an API-provided DC list to the centres assigned to the signed-in user.
+ * Assigned records are used as a fallback when the global list has no matching row.
+ */
+export const filterDistributionCentersToAssigned = (user, distributionCenters = []) => {
+  const assigned = Array.isArray(user?.AssignedDistributionCenter) ? user.AssignedDistributionCenter : [];
+  const assignedByCode = new Map(assigned.map((dc) => [String(dc?.DCCode ?? dc?.dcCode ?? "").trim(), dc]).filter(([code]) => code));
+  if (!assignedByCode.size) return [];
+  const globalByCode = new Map((Array.isArray(distributionCenters) ? distributionCenters : [])
+    .map((dc) => [String(dc?.DCCode ?? dc?.dcCode ?? "").trim(), dc]).filter(([code]) => code));
+  return [...assignedByCode.entries()].map(([code, assignedDC]) => ({ ...(globalByCode.get(code) || {}), ...assignedDC, DCCode: code }));
+};
+
+/**
  * Get DC details by code
  * @param {Object} user - The user object
  * @param {string} dcCode - The DC code to find

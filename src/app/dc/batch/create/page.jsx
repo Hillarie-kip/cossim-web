@@ -20,6 +20,8 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { useRouter } from "next/navigation";
 import DCSwitcher from "@/components/DCSwitcher";
 import BatchScanStep from "@/components/batches/BatchScanStep";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const STEPS = [
   { num: 1, label: "Configure Batch" },
@@ -28,6 +30,7 @@ const STEPS = [
 ];
 
 const CreateDCBatch = () => {
+  const { user } = useAuth();
   const router = useRouter();
   const MySwal = withReactContent(Swal);
 
@@ -49,6 +52,7 @@ const CreateDCBatch = () => {
     couriers,
     fetchCouriers,
   } = useAdmin();
+  const assignedDistributionCenters = useMemo(() => filterDistributionCentersToAssigned(user, distributionCenters), [user, distributionCenters]);
 
   // Auto-set fromDCCode to the manager's DC
   useEffect(() => {
@@ -266,7 +270,7 @@ const CreateDCBatch = () => {
                           name="fromDCCode"
                           value={form.fromDCCode}
                           onChange={handleSelectChange}
-                          options={distributionCenters.map((dc) => ({
+                          options={assignedDistributionCenters.map((dc) => ({
                             value: dc.DCCode,
                             label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`,
                           }))}

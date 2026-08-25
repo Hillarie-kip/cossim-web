@@ -5,6 +5,8 @@ import SSRSelect from "@/components/SSRSelect";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useShipment } from "@/hooks/useShipment";
 import { RoleType } from "@/constants/user-roles";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const generateManifestNO = (riderUserCode) => {
   const now = new Date();
@@ -16,6 +18,7 @@ const generateManifestNO = (riderUserCode) => {
 };
 
 const BulkUpdateStatusModal = ({ show, onClose, onSubmit, orders = [] }) => {
+  const { user } = useAuth();
   const { usersByRole, fetchUsersByRole, distributionCenters, fetchDistributionCenters, loading: ridersLoading } = useAdmin();
   const { handlePostRiderManifestTx } = useShipment();
   const [selectedTransition, setSelectedTransition] = useState(null);
@@ -89,7 +92,7 @@ const BulkUpdateStatusModal = ({ show, onClose, onSubmit, orders = [] }) => {
     rider,
   })) || [];
 
-  const dcOptions = distributionCenters?.map(dc => ({
+  const dcOptions = filterDistributionCentersToAssigned(user, distributionCenters).map(dc => ({
     value: dc.DCCode,
     label: `${dc.DCName} (${dc.DCCode})`,
     dc,

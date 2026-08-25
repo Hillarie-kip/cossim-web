@@ -31,6 +31,7 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { useUser } from "@/hooks/useUser";
 import { useShipment } from "@/hooks/useShipment";
 import { postShipmentHandoverBatch } from "@/services/shipmentService";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 export default function RiderBatchScan() {
   const inputRef = useRef(null);
@@ -69,7 +70,7 @@ export default function RiderBatchScan() {
   }, [selectedStatus, fetchDistributionCenters]);
 
   const dcOptions =
-    distributionCenters?.map((dc) => ({
+    filterDistributionCentersToAssigned(user, distributionCenters).map((dc) => ({
       value: dc.DCCode,
       label: `${dc.DCName} (${dc.DCCode})`,
     })) || [];

@@ -8,6 +8,8 @@ import DatePicker, { registerLocale, setDefaultLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { enUS } from 'date-fns/locale/en-US';
 import { RoleType } from "@/constants/user-roles";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 // Register English locale (you can change this to your preferred locale)
 registerLocale('en-US', enUS);
@@ -16,6 +18,7 @@ registerLocale('en-US', enUS);
 setDefaultLocale('en-US');
 
 const PostManifestModal = ({ show, onHide, onSuccess, riderUserCode, manifestNO, isUpdate = false, dcCode }) => {
+  const { user } = useAuth();
   const [form, setForm] = useState({
     dcCode: dcCode || "",
     riderUserCode: riderUserCode || "",
@@ -87,7 +90,7 @@ const PostManifestModal = ({ show, onHide, onSuccess, riderUserCode, manifestNO,
   }, [show]);
 
   // Prepare options for the select dropdowns
-  const dcOptions = distributionCenters.map(dc => ({
+  const dcOptions = filterDistributionCentersToAssigned(user, distributionCenters).map(dc => ({
     value: dc.DCCode,
     label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`
   }));
