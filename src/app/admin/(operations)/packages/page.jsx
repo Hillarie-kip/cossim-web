@@ -1419,15 +1419,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         }));
       },
       preConfirm: async () => {
-        const payment = requiresPayment ? document.querySelector('input[name="delivery-payment"]:checked')?.value : "none";
+        const popup = Swal.getPopup();
+        const payment = requiresPayment ? popup?.querySelector('input[name="delivery-payment"]:checked')?.value : "none";
         if (requiresPayment && !payment) return Swal.showValidationMessage("Choose a payment option");
-        const phone = String(document.getElementById("delivery-prompt-phone")?.value || "").replace(/\D/g, "");
+        const phone = String(popup?.querySelector("#delivery-prompt-phone")?.value || "").replace(/\D/g, "");
         if (payment === "prompt" && !/^(?:0?7\d{8}|2547\d{8})$/.test(phone)) return Swal.showValidationMessage("Enter a valid Kenyan mobile number");
         if (payment === "prompt" && !promptConfirmation) return Swal.showValidationMessage("Click Send Prompt and wait for payment confirmation first");
-        const reference = document.getElementById("delivery-reference")?.value?.trim() || "";
+        const reference = popup?.querySelector("#delivery-reference")?.value?.trim() || "";
         if (payment === "cod" && !reference) return Swal.showValidationMessage("Enter the payment reference number");
-        const notes = document.getElementById("delivery-notes")?.value?.trim() || "";
-        const waitMessage = document.getElementById("delivery-wait-message");
+        const notes = popup?.querySelector("#delivery-notes")?.value?.trim() || "";
+        const waitMessage = popup?.querySelector("#delivery-wait-message");
         if (payment === "prompt") waitMessage?.classList.remove("d-none");
         try {
           await onConfirm({ payment, phone, reference, notes, promptConfirmation });
@@ -1506,7 +1507,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           extra: { riderCode: "", riderLabel: "" },
         }));
       } else if (action === "pus" || action === "complete") {
-        const codOrders = orders.filter((order) => Boolean(order.CashOnDeliveryRequired) && Number(order.CODAmount || 0) > 0);
+        const getCODAmount = (order) => Number(
+          order.CODAmount
+          ?? order.CashOnDeliveryAmount
+          ?? order.cashOnDeliveryAmount
+          ?? order.codAmount
+          ?? 0
+        );
+        const codOrders = orders.filter((order) => getCODAmount(order) > 0);
         const requiresPayment = codOrders.length > 0;
         const paymentOptions = {
           prompt: "Prompt",
@@ -1518,16 +1526,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           await Promise.all(codOrders.map((order) => {
             const confirmedPayment = confirmedPayments[order.OrderNO] || {};
             const transactionID = confirmedPayment.TransID || confirmedPayment.transID || reference;
-            const amountPaid = Number(confirmedPayment.Amount || confirmedPayment.amount || order.CODAmount || 0);
+            const amountPaid = Number(confirmedPayment.Amount ?? confirmedPayment.amount ?? getCODAmount(order));
             if (!transactionID || amountPaid <= 0) throw new Error(`Payment details are missing for ${order.OrderNO}`);
             return saveShipmentOrderPayment({
-              shipmentOrderPaymentID: 0,
-              orderNO: order.OrderNO,
-              transactionID,
-              amountPaid,
-              isVerified: payment === "prompt",
-              isCODPayment: true,
-              paymentMethodTypeCode: payment === "prompt" ? 1 : 2,
+              ShipmentOrderPaymentID: 0,
+              OrderNO: order.OrderNO,
+              TransactionID: transactionID.trim(),
+              AmountPaid: amountPaid,
+              IsCODPayment: true,
+              PaymentMethodTypeCode: payment === "prompt" ? 1 : 2,
             });
           }));
           await updateSelectedTaskOrders(orders, (order) => {
