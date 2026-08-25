@@ -2622,13 +2622,13 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <Layers className="me-2 iconsize" />
                   {activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns" : "Consolidate"}
                 </button>
-                {activeTask === "dispatch" && selectedRowKeys.length > 0 && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
-                  <button type="button" onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
-                  <button type="button" onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>
-                  <button type="button" onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>
-                  <button type="button" className="warning" onClick={() => handleDeliveryAction("reverse")}><i className="feather-rotate-ccw" />Reverse</button>
-                  <button type="button" onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
-                  <button type="button" className="warning" onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
+                {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
+                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
+                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>
+                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>
+                  <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reverse")}><i className="feather-rotate-ccw" />Reverse</button>
+                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
+                  <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
                 </div>}
                 {activeTask === "reversed" && selectedRowKeys.length > 0 && <button type="button" className="btn btn-outline-danger btn-sm d-flex align-items-center" onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle me-2" />Mark Lost</button>}
               </div>
@@ -2711,7 +2711,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <div className="table-responsive packages-desktop-table">
               <Datatable
                 className="packages-table"
-                rowSelection={undefined}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: setSelectedRowKeys,
+                }}
                 onRow={(record) => ({
                   onClick: () => {
                     if (isReceiveTask) openReceivePanel(record);
@@ -2730,6 +2733,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 expandable={isReceiveTask ? undefined : {
                   expandedRowRender: (record) => <OrderExpandedDetails order={record} />,
                   rowExpandable: (record) => Boolean(record?.OrderNO),
+                  showExpandColumn: false,
                 }}
                 pagination={isReceiveTask ? false : {
                   current: pagination.currentPage,
@@ -2794,7 +2798,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       </div>
                     )}
                     <div className="d-flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-outline-success" disabled={!receiveItems.length} onClick={() => setReceivedOrderKeys(receiveItems.map((item) => item.OrderNO))}>Select All Packages</button>
+                      <button type="button" className="btn btn-outline-success" disabled={!receiveItems.length} onClick={() => setReceivedOrderKeys(receiveItems.map((item) => item.OrderNO))}>Confirm All Manually</button>
                       <button type="button" className="btn btn-success" disabled={!receivedOrderKeys.length} onClick={() => setShowReceiveBatchModal(true)}>{receiveBatch.HandoverCode || receiveBatch.IsMultiBatch ? "Accept Batch" : "Acknowledge Receipt"} ({receivedOrderKeys.length})</button>
                     </div>
                   </section>
@@ -2855,6 +2859,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <h6>{batchPanelMode === "confirmed" ? "Pick and scan packages" : "Scan selected packages"}</h6>
                   {batchPanelMode === "confirmed" && <div className="d-flex align-items-start justify-content-between gap-2 mb-2"><p className="text-muted small mb-0">Scans are saved on this device until the pick is completed.</p>{batchScannedKeys.length > 0 && <button type="button" className="btn btn-link btn-sm text-danger p-0 flex-shrink-0" onClick={() => { window.localStorage.removeItem(pickScanStorageKey); setBatchPanelOrders([]); setBatchScannedKeys([]); }}>Clear saved scans</button>}</div>}
                   <form className="d-flex gap-2 mb-3" onSubmit={handleBatchPanelScan}><input className="form-control" value={batchScan} onChange={(event) => setBatchScan(event.target.value)} placeholder="Scan or enter package number" /><button type="submit" className="btn btn-primary" disabled={!batchScan.trim()}>Scan</button></form>
+                  {batchPanelMode === "confirmed" && batchPanelOrders.length > 0 && <button type="button" className="btn btn-outline-primary w-100 mb-3" onClick={() => setBatchScannedKeys(batchPanelOrders.map((order) => order.OrderNO))}>Confirm All Manually</button>}
                   <div className="list-group mb-3">{batchPanelOrders.map((order) => {
                     const confirmed = batchScannedKeys.includes(order.OrderNO);
                     return <label className="list-group-item d-flex align-items-center justify-content-between gap-2" key={order.OrderNO}>
