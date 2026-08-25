@@ -125,6 +125,10 @@ export const getShipmentOrdersByVendor = async (params = {}) => {
  */
 export const getShipmentOrders = async (params = {}) => {
     try {
+        const requestedDCScope = String(params.fromDCCode || params.toDCCode || '').trim();
+        if (params.requireDCScope && (!requestedDCScope || requestedDCScope === '__NONE__')) {
+            return { Error: false, StatusCode: 200, Message: 'No distribution centre selected', TotalCount: 0, Data: [] };
+        }
         const queryParams = new URLSearchParams();
 
         // Add optional parameters
@@ -596,6 +600,34 @@ export const getShipmentOrderPayment = async (params = {}) => {
         const message = error.message || 'Failed to fetch shipment order payment.';
         throw new Error(message);
     }
+};
+
+export const saveShipmentOrderPayment = async (data) => {
+    const response = await api.post(apiRoutes.shipment.saveShipmentOrderPayment, data);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to save payment');
+    return response.data;
+};
+
+export const confirmShipmentOrderPayment = async ({ id, orderNO }) => {
+    const query = new URLSearchParams({ id: String(id), orderNO });
+    const response = await api.put(`${apiRoutes.shipment.confirmShipmentOrderPayment}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to confirm payment');
+    return response.data;
+};
+
+export const deleteShipmentOrderPayment = async ({ id, orderNO }) => {
+    const query = new URLSearchParams({ id: String(id), orderNO });
+    const response = await api.delete(`${apiRoutes.shipment.deleteShipmentOrderPayment}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to delete payment');
+    return response.data;
+};
+
+export const importDeliveredOrderPayments = async (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(apiRoutes.shipment.importDeliveredOrderPayments, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to import payments');
+    return response.data;
 };
 
 /**

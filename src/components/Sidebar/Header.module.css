@@ -26,6 +26,18 @@
   width: 260px;
   min-width: 260px;
 }
+.dcSelectionActions { display: flex; flex-direction: column; gap: 2px; }
+.dcSelectionActions button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #ff6200;
+  font-size: 10px;
+  line-height: 15px;
+  text-align: left;
+  white-space: nowrap;
+}
+.dcSelectionActions button:hover { text-decoration: underline; }
 .dateFilter {
   display: flex;
   align-items: center;

@@ -17,6 +17,15 @@ import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { setSelectedDC } from "@/services/dcService";
 import styles from "./Header.module.css";
 import { RoleType } from "@/constants/user-roles";
+import { components as selectComponents } from "react-select";
+
+const DCSelectOption = (props) => (
+  <selectComponents.Option {...props}>
+    <input type="checkbox" checked={props.isSelected} readOnly tabIndex={-1} aria-hidden="true"
+      style={{ marginRight: 8, accentColor: "#ff6200", pointerEvents: "none" }} />
+    {props.label}
+  </selectComponents.Option>
+);
 
 const globalFilterSelectStyles = {
   control: (base, state) => ({
@@ -175,8 +184,13 @@ const Header = () => {
     const selectedCodes = String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean);
     const assignedCodes = assignedDCs.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
     if (selectedCodes.includes("__ALL__")) {
-      if (filters.dcCodes !== "__ALL__") setFilter("dcCodes", "__ALL__");
+      const explicitAssignedCodes = assignedCodes.join(",");
+      if (filters.dcCodes !== explicitAssignedCodes) setFilter("dcCodes", explicitAssignedCodes);
       setSelectedDC(assignedCodes[0] || "");
+      return;
+    }
+    if (selectedCodes.includes("__NONE__")) {
+      setSelectedDC("");
       return;
     }
     if (selectedCodes[0]?.startsWith("__ALL_EXCEPT__:")) {
@@ -187,10 +201,10 @@ const Header = () => {
     }
     const validCodes = selectedCodes.filter((code) => assignedCodes.includes(code));
     const defaultDCCode = assignedDCs[0].DCCode || assignedDCs[0].dcCode || "";
-    const selectedDCCodes = (validCodes.length ? validCodes : [defaultDCCode]).filter(Boolean);
+    const selectedDCCodes = selectedCodes.length ? validCodes : [];
     const serializedCodes = selectedDCCodes.join(",");
     if (serializedCodes !== filters.dcCodes) setFilter("dcCodes", serializedCodes);
-    if (selectedDCCodes[0]) setSelectedDC(selectedDCCodes[0]);
+    setSelectedDC(selectedDCCodes[0] || defaultDCCode);
   }, [user?.AssignedDistributionCenter, filters.dcCode, filters.dcCodes, isVendorOnly]);
 
   const getLogoRoute = () => {
@@ -452,9 +466,26 @@ const Header = () => {
   const excludedHeaderDCCodes = rawDCFilter.startsWith("__ALL_EXCEPT__:")
     ? new Set(rawDCFilter.slice("__ALL_EXCEPT__:".length).split("|").filter(Boolean))
     : null;
-  const selectedHeaderDCCodes = excludedHeaderDCCodes
+  const selectedHeaderDCCodes = rawDCFilter === "__NONE__" ? [] : excludedHeaderDCCodes
     ? assignedHeaderDCCodes.filter((code) => !excludedHeaderDCCodes.has(code))
-    : rawDCFilter.split(",").filter(Boolean);
+    : rawDCFilter === "__ALL__"
+      ? assignedHeaderDCCodes
+      : rawDCFilter.split(",").filter(Boolean);
+  const selectedHeaderDCSet = new Set(selectedHeaderDCCodes);
+  const dcOptionsByRegion = Object.values(distributionCenters.reduce((groups, dc) => {
+    const code = dc.DCCode || dc.dcCode;
+    if (!code) return groups;
+    const region = dc.Region || dc.region || "Other / Unassigned region";
+    if (!groups[region]) groups[region] = { label: region, options: [] };
+    groups[region].options.push({ value: code, label: dc.DCName || dc.dcName || code });
+    return groups;
+  }, {})).sort((a, b) => a.label.localeCompare(b.label));
+  const saveDCSelection = (codes) => {
+    const requestedCodes = new Set(codes);
+    const uniqueCodes = assignedHeaderDCCodes.filter((code) => requestedCodes.has(code));
+    setFilter("dcCodes", uniqueCodes.length === 0 ? "__NONE__" : uniqueCodes.join(","));
+    setSelectedDC(uniqueCodes[0] || "");
+  };
 
   return (
     <div className="header">
@@ -559,37 +590,35 @@ const Header = () => {
               instanceId="header-dc-filter"
               className={`${styles.globalFilterSelect} ${styles.globalDCFilterSelect}`}
               aria-label="Distribution center"
-              options={[
-                { value: "__ALL__", label: "Select all sorting centres" },
-                ...distributionCenters.map((dc) => {
-                  const code = dc.DCCode || dc.dcCode;
-                  return { value: code, label: dc.DCName || dc.dcName || code };
-                }),
-              ]}
+              options={dcOptionsByRegion}
               value={selectedHeaderDCCodes.map((code) => {
-                if (code === "__ALL__") return { value: "__ALL__", label: "All distribution centres" };
                 const dc = distributionCenters.find((item) => (item.DCCode || item.dcCode) === code);
                 return { value: code, label: dc?.DCName || dc?.dcName || code };
               })}
-              onChange={(selected) => {
-                const selectedOptions = selected || [];
-                const selectAll = selectedOptions.some((option) => option.value === "__ALL__");
-                const selectedCodes = selectAll
-                  ? ["__ALL__"]
-                  : selectedOptions.map((option) => option.value).filter((value) => value !== "__ALL__");
-                const assignedCodes = distributionCenters.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
-                const selectedSet = new Set(selectedCodes);
-                const excludedCodes = assignedCodes.filter((code) => !selectedSet.has(code));
-                const dcCodes = selectAll
-                  ? "__ALL__"
-                  : selectedCodes.length > assignedCodes.length / 2
-                    ? `__ALL_EXCEPT__:${excludedCodes.join("|")}`
-                    : selectedCodes.join(",");
-                setFilter("dcCodes", dcCodes);
-                if (selectAll) setSelectedDC(assignedCodes[0] || "");
-                else if (selectedCodes[0]) setSelectedDC(selectedCodes[0]);
+              onChange={(selected) => saveDCSelection((selected || []).map((option) => option.value))}
+              formatGroupLabel={(group) => {
+                const regionCodes = group.options.map((option) => option.value);
+                const selectedCount = regionCodes.filter((code) => selectedHeaderDCSet.has(code)).length;
+                const allSelected = selectedCount === regionCodes.length;
+                return (
+                  <div role="checkbox" aria-checked={allSelected ? true : selectedCount ? "mixed" : false}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      saveDCSelection(allSelected
+                        ? selectedHeaderDCCodes.filter((code) => !regionCodes.includes(code))
+                        : [...selectedHeaderDCCodes, ...regionCodes]);
+                    }}
+                    style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                    <input type="checkbox" checked={allSelected} readOnly
+                      style={{ marginRight: 8, accentColor: "#ff6200", pointerEvents: "none" }} />
+                    <span>{group.label}</span>
+                    <span style={{ marginLeft: "auto", fontWeight: 400 }}>{selectedCount}/{regionCodes.length}</span>
+                  </div>
+                );
               }}
-              placeholder={rawDCFilter === "__ALL__"
+              components={{ Option: DCSelectOption }}
+              placeholder={selectedHeaderDCCodes.length > 0 && selectedHeaderDCCodes.length === assignedHeaderDCCodes.length
                 ? "All distribution centres"
                 : selectedHeaderDCCodes.length > 1
                 ? `${selectedHeaderDCCodes.length} DCs selected`
@@ -605,6 +634,12 @@ const Header = () => {
               noOptionsMessage={() => "No distribution centers found"}
               styles={globalFilterSelectStyles}
             />}
+            {!isVendorOnly && distributionCenters.length > 0 && (
+              <div className={styles.dcSelectionActions}>
+                <button type="button" onClick={() => saveDCSelection(assignedHeaderDCCodes)}>Select all</button>
+                <button type="button" onClick={() => saveDCSelection([])}>Unselect all</button>
+              </div>
+            )}
           </li>
         )}
         {/* Search */}

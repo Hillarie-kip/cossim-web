@@ -39,6 +39,7 @@ export function GlobalFiltersProvider({ children }) {
     filters,
     setFilter: (key, value) => setFilters((current) => {
       if (key === "dcCodes") {
+        if (value === "__NONE__") return { ...current, dcCodes: "__NONE__", dcCode: "" };
         const codes = String(value || "").split(",").filter(Boolean);
         return { ...current, dcCodes: codes.join(","), dcCode: codes[0] || "" };
       }

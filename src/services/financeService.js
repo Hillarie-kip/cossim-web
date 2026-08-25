@@ -1,6 +1,47 @@
 import { api } from "@/lib/apiClient";
 import apiRoutes from "@/constants/apis";
 
+export const getPaymentReviewQueue = async (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.reasonCode) query.set('reasonCode', params.reasonCode);
+    if (params.status) query.set('status', params.status);
+    const response = await api.get(`${apiRoutes.finance.getPaymentReviewQueue}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load finance review queue');
+    return response.data;
+};
+
+export const resolvePaymentReviews = async (action, items) => {
+    const response = await api.post(apiRoutes.finance.resolvePaymentReviews, { action, items });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to update reviews');
+    return response.data;
+};
+
+export const getReconciliationWorkspace = async (search = '') => {
+    const query = new URLSearchParams(); if (search) query.set('search', search);
+    const response = await api.get(`${apiRoutes.finance.getReconciliationWorkspace}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load reconciliation orders');
+    return response.data;
+};
+
+export const searchPaybillReceipts = async ({ search = '', orderNO }) => {
+    const query = new URLSearchParams({ orderNO }); if (search) query.set('search', search);
+    const response = await api.get(`${apiRoutes.finance.searchPaybillReceipts}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to search statement receipts');
+    return response.data;
+};
+
+export const matchOrderReceipts = async (orderNO, receiptNos) => {
+    const response = await api.post(apiRoutes.finance.matchOrderReceipts, { orderNO, receiptNos });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to match statement payments');
+    return response.data;
+};
+
+export const rejectReconciliationOrder = async (orderNO) => {
+    const response = await api.post(apiRoutes.finance.rejectReconciliationOrder, { orderNO });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to reject reconciliation row');
+    return response.data;
+};
+
 /**
  * Finance Service
  * Handles all finance-related API calls

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Datatable from "@/core/pagination/datatable";
 import TableExportIcons from "@/components/TableExportIcons";
+import OrderExpandedDetails from "@/components/OrderExpandedDetails";
 import { getHandoverBatchList, getHandoverReceiptUrl, getShipmentOrders } from "@/services/shipmentService";
 import notify from "@/lib/toast";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
@@ -108,17 +109,6 @@ export default function DeliveredOrdersTableReport({
     { title: "Service fee", dataIndex: "ServiceFee", width: 140, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "COD", dataIndex: "CODAmount", width: 140, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "Date", dataIndex: "DateAdded", width: 180, render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
-    ...(allowPayment ? [{
-      title: "Action",
-      dataIndex: "OrderNO",
-      width: 140,
-      fixed: "right",
-      render: (orderNO) => (
-        <Link className="btn btn-sm btn-primary" href={`/admin/cod-payment?orderNO=${encodeURIComponent(orderNO)}&returnTo=${encodeURIComponent("/admin/reports/delivered-orders")}`}>
-          Add Payment
-        </Link>
-      ),
-    }] : []),
   ], [allowPayment, isConsolidated]);
 
   const exportColumns = useMemo(() => [
@@ -176,8 +166,12 @@ export default function DeliveredOrdersTableReport({
   return <div className="content">
     <div className="page-header">
       <div className="page-title"><h4>{title}</h4><h6>{description}</h6></div>
-      {allowExport && (
+      {(allowExport || allowPayment) && (
         <ul className="table-top-head">
+          {allowPayment && <li>
+            <Link className="btn btn-primary btn-sm text-nowrap" href="/admin/payment-reconciliation">Reconcile Payments</Link>
+          </li>}
+          {allowExport &&
           <TableExportIcons
             data={rows}
             columns={exportColumns}
@@ -187,7 +181,7 @@ export default function DeliveredOrdersTableReport({
             title="Received Orders"
             fetchAllData={fetchAllDataForExport}
             pdfOrientation="landscape"
-          />
+          />}
         </ul>
       )}
     </div>
@@ -210,9 +204,12 @@ export default function DeliveredOrdersTableReport({
               if (!packageRows.length) return <p className="text-muted m-3">No packages found in this batch.</p>;
               return <div className="table-responsive p-2"><table className="table table-sm align-middle mb-0"><thead><tr><th>Order number</th><th>Vendor</th><th>Customer</th><th>Status</th></tr></thead><tbody>{packageRows.map((item) => <tr key={item.OrderNO}><td><strong className="text-primary">{text(item.OrderNO)}</strong></td><td>{text(item.VendorName || item.VendorCode)}</td><td>{text(item.CustomerName)}</td><td>{text(item.StatusName)}</td></tr>)}</tbody></table></div>;
             },
-          } : undefined}
+          } : {
+            rowExpandable: (row) => Boolean(row?.OrderNO),
+            expandedRowRender: (order) => <OrderExpandedDetails order={order} />,
+          }}
           loading={loading}
-          scroll={{ x: isConsolidated ? 1780 : 1750, y: 600 }}
+          scroll={{ x: isConsolidated ? 1780 : 1750 }}
           emptyTitle={emptyTitle}
           emptyDescription={`No ${isConsolidated ? "handover batches" : "orders"} match the selected filters.`}
           pagination={{

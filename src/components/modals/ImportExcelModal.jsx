@@ -81,6 +81,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
     const formData = new FormData();
     formData.append('VendorCode', vendorCode);
     formData.append('DeliveryTypeCode', selectedDeliveryType.value);
+    formData.append('OriginDCCode', selectedSortingCentre.value);
     formData.append('DestinationDCCode', selectedSortingCentre.value);
     formData.append('file', selectedFile);
     
