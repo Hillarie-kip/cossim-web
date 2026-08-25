@@ -295,7 +295,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
           <span style={{ color: '#F26A26', fontSize: t.arrow, fontWeight: '900' }}>→</span>
-          <span style={{ fontSize: t.thanks, fontWeight: '900', color: '#1A1A1A', letterSpacing: '1px', lineHeight: 1.05 }}>THANK YOU</span>
+          <span style={{ fontSize: t.thanks, fontWeight: '900', color: '#1A1A1A', letterSpacing: '1px', lineHeight: 1.05 }}>COSSIM LIMITED</span>
           <span style={{ color: '#F26A26', fontSize: t.arrow, fontWeight: '900' }}>←</span>
         </div>
         <div style={{ fontSize: t.subtitle, color: '#999', letterSpacing: '2px', marginTop: '1px', fontWeight: '600' }}>

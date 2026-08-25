@@ -13,7 +13,10 @@ export default function DashboardLayout({ children }) {
         allowedRoles={[
           RoleType.ADMIN, 
           RoleType.FINANCE, 
-          RoleType.SALES_MANAGER
+          RoleType.SALES_MANAGER,
+          RoleType.DC_OPERATOR,
+          RoleType.PACKAGE_HANDLER,
+          RoleType.VENDOR
         ]}
       >
         <div className={`main-wrapper`}>

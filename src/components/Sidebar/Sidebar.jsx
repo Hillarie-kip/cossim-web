@@ -4,13 +4,25 @@ import { useLocation } from "@/hooks/useLocation";
 import ClientScrollbars from "../ClientScrollbars";
 import { SidebarData } from "@/core/data/siderbar_data";
 import SidebarItem from "./SidebarItem";
+import { useAuth } from "@/contexts/AuthContext";
+import { RoleType } from "@/constants/user-roles";
 
 const Sidebar = () => {
   const Location = useLocation();
+  const { user } = useAuth();
   const currentHref = `${Location.pathname}${Location.search || ""}`;
   const [subOpen, setSubopen] = useState("");
   const [subsidebar, setSubsidebar] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isVendorOnly = roleCodes.has(RoleType.VENDOR) && !roleCodes.has(RoleType.ADMIN);
+  const sidebarData = isVendorOnly
+    ? SidebarData
+        .filter((section) => !["Finance", "General"].includes(section.label))
+        .map((section) => section.label === "Operations"
+          ? { ...section, submenuItems: section.submenuItems.filter((item) => item.label === "Task Management") }
+          : section)
+    : SidebarData;
 
   const closeMobileSidebar = () => {
     if (window.innerWidth <= 991) {
@@ -37,7 +49,7 @@ const Sidebar = () => {
 
   // Auto-expand active submenu on page load
   useEffect(() => {
-    SidebarData.forEach((mainLabel) => {
+    sidebarData.forEach((mainLabel) => {
       mainLabel?.submenuItems?.forEach((title) => {
         if (title?.links?.includes(Location.pathname) || title?.links?.includes(currentHref)) {
           setSubopen(title?.label);
@@ -49,7 +61,7 @@ const Sidebar = () => {
         });
       });
     });
-  }, [Location.pathname, Location.search, currentHref]);
+  }, [Location.pathname, Location.search, currentHref, isVendorOnly]);
 
   return (
     <div>
@@ -58,7 +70,7 @@ const Sidebar = () => {
           <div className="sidebar-inner slimscroll">
             <div id="sidebar-menu" className="sidebar-menu">
               <ul>
-                {SidebarData?.map((mainLabel) => (
+                {sidebarData?.map((mainLabel) => (
                   <li className="submenu-open" key={mainLabel?.label}>
                     <h6 className="submenu-hdr">{mainLabel?.label}</h6>
 

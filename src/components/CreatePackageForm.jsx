@@ -19,6 +19,9 @@ import PaymentStep from '@/components/PaymentStep';
 import '@/style/css/create-package.css';
 import notify from '@/lib/toast';
 import { getSelectedDC } from '@/services/dcService';
+import { getShipmentFieldSuggestions, getShipmentProductNames } from '@/services/shipmentService';
+
+const WALK_IN_VENDOR = { value: '__WALK_IN__', label: 'Walk-in / Default pricing', isWalkIn: true };
 
 const loadGooglePlaces = () => {
   if (window.google?.maps?.places) return Promise.resolve(true);
@@ -141,7 +144,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     deliveryTypeCode: '',
     originDCCode: '',
     destinationDCCode: '',
-    shipmentSize: '',
+    shipmentSize: 'SMALL',
     cashOnDelivery: false,
     codAmount: '',
     hasPickUp: true,
@@ -149,13 +152,10 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     pickupETA: '',
     deliveryETA: '',
 
-    // Additional Fee
-    feeType: 'additional fee', // 'discount' or 'additional fee'
-    additionalFeeAmount: '',
-
     // Terms and Conditions
     agreeToTerms: true
   });
+  const isWalkIn = Boolean(formData.selectedVendor?.isWalkIn);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formStep, setFormStep] = useState(0);
@@ -163,12 +163,103 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const [roadDistanceStatus, setRoadDistanceStatus] = useState('idle');
   const [placesStatus, setPlacesStatus] = useState('loading');
   const [selectedPriceZoneID, setSelectedPriceZoneID] = useState('');
+  const senderStreetRef = useRef(null);
   const receiverStreetRef = useRef(null);
   const [validationErrors, setValidationErrors] = useState({});
   const [shippingRate, setShippingRate] = useState(null);
   const [rateCalculating, setRateCalculating] = useState(false);
   const [orderItems, setOrderItems] = useState([]);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [historicalProductNames, setHistoricalProductNames] = useState([]);
+  const [historicalProductsLoading, setHistoricalProductsLoading] = useState(false);
+  const [fieldSuggestions, setFieldSuggestions] = useState({});
+  const [fieldSuggestionLoading, setFieldSuggestionLoading] = useState({});
+  const productSearchTimerRef = useRef(null);
+  const fieldSearchTimersRef = useRef({});
+
+  const itemValueTotal = useMemo(() => orderItems.reduce(
+    (total, item) => total + (Number(item.quantity || 1) * Number(item.productValue || 0)), 0),
+  [orderItems]);
+
+  const loadFieldSuggestions = (field, searchTerm = '') => {
+    clearTimeout(fieldSearchTimersRef.current[field]);
+    fieldSearchTimersRef.current[field] = setTimeout(async () => {
+      setFieldSuggestionLoading((current) => ({ ...current, [field]: true }));
+      try {
+        const response = await getShipmentFieldSuggestions(field, searchTerm, 50);
+        const values = response?.Data ?? response?.data;
+        setFieldSuggestions((current) => ({ ...current, [field]: Array.isArray(values) ? values : [] }));
+      } catch {
+        setFieldSuggestions((current) => ({ ...current, [field]: [] }));
+      } finally {
+        setFieldSuggestionLoading((current) => ({ ...current, [field]: false }));
+      }
+    }, 250);
+    return searchTerm;
+  };
+
+  const renderSuggestionInput = (field, formKey, placeholder) => (
+    <CreatableSelect
+      value={formData[formKey] ? { value: formData[formKey], label: formData[formKey] } : null}
+      options={(fieldSuggestions[field] || []).map((value) => ({ value, label: value }))}
+      onFocus={() => loadFieldSuggestions(field, '')}
+      onInputChange={(value, action) => action.action === 'input-change' ? loadFieldSuggestions(field, value) : value}
+      onChange={(option) => {
+        setFormData((current) => ({ ...current, [formKey]: option?.value || '' }));
+        setValidationErrors((current) => ({ ...current, [formKey]: '' }));
+      }}
+      placeholder={placeholder}
+      isClearable
+      isSearchable
+      isLoading={Boolean(fieldSuggestionLoading[field])}
+      formatCreateLabel={(value) => `Use new value: ${value}`}
+      className={validationErrors[formKey] ? 'is-invalid' : ''}
+    />
+  );
+
+  const productOptions = useMemo(() => {
+    const options = vendorProducts.map((product) => ({
+      value: product.vendorProductCode,
+      label: product.vendorProductName,
+    }));
+    const knownNames = new Set(options.map((option) => option.label?.trim().toLowerCase()).filter(Boolean));
+    historicalProductNames.forEach((name) => {
+      if (!knownNames.has(name.trim().toLowerCase())) options.push({ value: `history:${name}`, label: name });
+    });
+    return options;
+  }, [vendorProducts, historicalProductNames]);
+
+  const searchHistoricalProducts = (inputValue) => {
+    clearTimeout(productSearchTimerRef.current);
+    productSearchTimerRef.current = setTimeout(async () => {
+      setHistoricalProductsLoading(true);
+      try {
+        const response = await getShipmentProductNames(inputValue, 100);
+        const values = response?.Data ?? response?.data;
+        setHistoricalProductNames(Array.isArray(values) ? values : []);
+      } catch {
+        setHistoricalProductNames([]);
+      } finally {
+        setHistoricalProductsLoading(false);
+      }
+    }, 250);
+    return inputValue;
+  };
+
+  useEffect(() => {
+    setHistoricalProductsLoading(true);
+    getShipmentProductNames('', 100)
+      .then((response) => {
+        const values = response?.Data ?? response?.data;
+        setHistoricalProductNames(Array.isArray(values) ? values : []);
+      })
+      .catch(() => setHistoricalProductNames([]))
+      .finally(() => setHistoricalProductsLoading(false));
+    return () => {
+      clearTimeout(productSearchTimerRef.current);
+      Object.values(fieldSearchTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
 
   useEffect(() => {
     if (!receiverStreetRef.current) return undefined;
@@ -180,8 +271,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       setPlacesStatus('ready');
       const autocomplete = new window.google.maps.places.Autocomplete(receiverStreetRef.current, {
         componentRestrictions: { country: 'ke' },
-        fields: ['address_components', 'formatted_address', 'geometry', 'name'],
-        types: ['geocode'],
+        fields: ['address_components', 'formatted_address', 'geometry', 'name', 'place_id', 'types'],
+        strictBounds: false,
       });
 
       listener = autocomplete.addListener('place_changed', () => {
@@ -207,6 +298,47 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       if (listener) window.google?.maps?.event?.removeListener(listener);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isWalkIn || !senderStreetRef.current) return undefined;
+    let active = true;
+    let listener;
+    setPlacesStatus('loading');
+
+    loadGooglePlaces().then((placesAvailable) => {
+      if (!placesAvailable || !active || !senderStreetRef.current) return;
+      setPlacesStatus('ready');
+      const autocomplete = new window.google.maps.places.Autocomplete(senderStreetRef.current, {
+        componentRestrictions: { country: 'ke' },
+        fields: ['address_components', 'formatted_address', 'geometry', 'name', 'place_id', 'types'],
+        strictBounds: false,
+      });
+      listener = autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+        if (!place.geometry?.location) return;
+        const street = place.name && place.formatted_address && !place.formatted_address.startsWith(place.name)
+          ? `${place.name}, ${place.formatted_address}`
+          : (place.formatted_address || place.name || '');
+        setFormData((current) => ({
+          ...current,
+          senderStreetName: street || current.senderStreetName,
+          senderCity: getPlacePart(place, 'locality') || getPlacePart(place, 'administrative_area_level_2') || current.senderCity,
+          senderArea: getPlacePart(place, 'sublocality_level_1') || getPlacePart(place, 'neighborhood') || current.senderArea,
+          senderPostalCode: getPlacePart(place, 'postal_code') || current.senderPostalCode,
+          senderLatitude: String(place.geometry.location.lat()),
+          senderLongitude: String(place.geometry.location.lng()),
+        }));
+        setValidationErrors((current) => ({ ...current, senderStreetName: '' }));
+      });
+    }).catch((placesError) => {
+      if (active) setPlacesStatus(placesError.message || 'Google Places suggestions are unavailable.');
+    });
+
+    return () => {
+      active = false;
+      if (listener) window.google?.maps?.event?.removeListener(listener);
+    };
+  }, [isWalkIn]);
 
   useEffect(() => {
     const sortingArea = distributionCenters.find((dc) => dc.DCCode === formData.originDCCode);
@@ -291,10 +423,10 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   // Create options for Select components
   const dcOptions = distributionCenters.map((dc) => ({
     value: dc.DCCode,
-    label: `${dc.DCName} (${dc.DCCode})`
+    label: `${dc.DCCode === 'DC-UB' ? 'KCS House' : dc.DCName} (${dc.DCCode})`
   }));
 
-  const activeVendorCode = formData.selectedVendor?.value || formData.selectedVendor?.vendor?.vendorCode || user?.AssignedVendor?.VendorCode || '';
+  const activeVendorCode = isWalkIn ? '' : (formData.selectedVendor?.value || formData.selectedVendor?.vendor?.vendorCode || user?.AssignedVendor?.VendorCode || '');
   const matchingPricingRates = useMemo(() => {
     const activeRates = (Array.isArray(shipmentRates) ? shipmentRates : []).filter((rate) =>
       Number(rate.StatusID ?? rate.statusID ?? 1) === 1 &&
@@ -324,6 +456,25 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     fetchShipmentRates();
   }, []);
 
+  useEffect(() => {
+    if (formData.originDCCode || !distributionCenters.length) return;
+    const kcsHouse = distributionCenters.find((dc) =>
+      String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs house'))
+      || distributionCenters.find((dc) => (dc.DCCode ?? dc.dcCode) === 'DC-UB')
+      || distributionCenters.find((dc) =>
+        String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs sorting center'));
+    if (kcsHouse) setFormData((current) => ({ ...current, originDCCode: kcsHouse.DCCode ?? kcsHouse.dcCode }));
+  }, [distributionCenters, formData.originDCCode]);
+
+  useEffect(() => {
+    setFormData((current) => ({
+      ...current,
+      cashOnDelivery: current.cashOnDelivery && itemValueTotal > 0,
+      codAmount: current.cashOnDelivery && itemValueTotal > 0 ? String(itemValueTotal) : '',
+    }));
+    if (itemValueTotal > 0) setValidationErrors((current) => ({ ...current, codAmount: '' }));
+  }, [itemValueTotal, formData.cashOnDelivery]);
+
   // Calculate shipping rate when route and delivery type are available
   const calculateShippingRate = async (fromDC, toDC, deliveryType, shipmentRateSize, vendorCode, roadKM, priceZoneID) => {
     if (!fromDC || !toDC || !deliveryType || !shipmentRateSize) {
@@ -345,8 +496,10 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
       const response = await fetchActiveShipmentRate(rateParams);
       
-      if (response?.Data) {
-        const resolvedRate = { ...response.Data, RateAmount: response.Data.CalculatedAmount ?? response.Data.RateAmount };
+      const rateData = response?.Data ?? response?.data;
+      if (rateData) {
+        const amount = rateData.CalculatedAmount ?? rateData.calculatedAmount ?? rateData.RateAmount ?? rateData.rateAmount ?? 0;
+        const resolvedRate = { ...rateData, RateAmount: Number(amount) };
         setShippingRate(resolvedRate);
       } else {
         setShippingRate(null);
@@ -370,7 +523,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     const toDC = formData.destinationDCCode || formData.originDCCode || getSelectedDC();
     
     const deliveryType = formData.deliveryTypeCode;
-    const vendorCode = formData.selectedVendor?.value || user?.AssignedVendor?.VendorCode || '';
+    const vendorCode = isWalkIn ? '' : (formData.selectedVendor?.value || user?.AssignedVendor?.VendorCode || '');
 
     if (fromDC && toDC && deliveryType && formData.shipmentSize) {
       if (!zonePricingOptions.length || selectedPriceZoneID) {
@@ -391,12 +544,13 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     roadDistance?.kilometers,
     selectedPriceZoneID,
     zonePricingOptions.length,
-    showVendorInput
+    showVendorInput,
+    isWalkIn
   ]);
 
   // Fetch vendor products when vendor is selected
   useEffect(() => {
-    const vendorCode = showVendorInput 
+    const vendorCode = showVendorInput && !isWalkIn
       ? formData.selectedVendor?.vendor?.vendorCode 
       : user?.AssignedVendor?.VendorCode;
 
@@ -410,7 +564,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       // Clear products when no vendor is selected
       setVendorProductsParams({});
     }
-  }, [formData.selectedVendor, user?.AssignedVendor?.VendorCode, showVendorInput]);
+  }, [formData.selectedVendor, user?.AssignedVendor?.VendorCode, showVendorInput, isWalkIn]);
 
   // Fetch products when params change
   useEffect(() => {
@@ -450,7 +604,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
   // Populate sender information from vendor when vendor is selected or on mount
   useEffect(() => {
-    const vendor = showVendorInput 
+    const vendor = showVendorInput && !isWalkIn
       ? formData.selectedVendor?.vendor 
       : user?.AssignedVendor;
 
@@ -466,7 +620,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         originDCCode: prev.originDCCode || vendor.DefaultDCCode || vendor.defaultDCCode || '',
       }));
     }
-  }, [formData.selectedVendor, user?.AssignedVendor, showVendorInput]);
+  }, [formData.selectedVendor, user?.AssignedVendor, showVendorInput, isWalkIn]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -482,6 +636,22 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         [name]: ''
       }));
     }
+  };
+
+  const handleCodChange = (event) => {
+    const checked = event.target.checked;
+    if (checked && itemValueTotal <= 0) {
+      setFormData((current) => ({ ...current, cashOnDelivery: false, codAmount: '' }));
+      setValidationErrors((current) => ({ ...current, codAmount: 'Add item values greater than zero before enabling COD' }));
+      notify.error('COD requires the total item value to be greater than zero');
+      return;
+    }
+    setFormData((current) => ({
+      ...current,
+      cashOnDelivery: checked,
+      codAmount: checked ? String(itemValueTotal) : '',
+    }));
+    setValidationErrors((current) => ({ ...current, codAmount: '' }));
   };
 
   // Handle Select changes for DC codes
@@ -624,11 +794,76 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
   const handleRemoveItem = (index) => {
     setOrderItems(prev => prev.filter((_, i) => i !== index));
-    notify.success('Item removed from package');
+  };
+
+  const handleAddInlineItem = () => {
+    setOrderItems((current) => [...current, {
+      itemCode: '', productName: '', description: '', weight: 0, quantity: 1,
+      isFragile: false, isPerishable: false, productValue: 0, remarks: '', vendorProductCode: null,
+      entryMode: 'manual',
+    }]);
+    setValidationErrors((current) => ({ ...current, orderItems: '' }));
+  };
+
+  const updateInlineItem = (index, changes) => {
+    setOrderItems((current) => current.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, ...changes } : item));
+  };
+
+  const handleInlineProductChange = (index, option) => {
+    if (!option) {
+      updateInlineItem(index, { itemCode: '', productName: '', vendorProductCode: null });
+      return;
+    }
+
+    const product = vendorProducts.find((item) => item.vendorProductCode === option.value);
+    if (product) {
+      updateInlineItem(index, {
+        itemCode: product.vendorProductCode,
+        vendorProductCode: product.vendorProductCode,
+        productName: product.vendorProductName || option.label,
+        description: product.description || '',
+        productValue: Number(product.currentPrice || product.productValue || 0),
+        isFragile: Boolean(product.isFragile),
+        isPerishable: Boolean(product.isPerishable),
+      });
+      return;
+    }
+
+    updateInlineItem(index, {
+      itemCode: '', vendorProductCode: null, productName: option.label || option.value || '',
+    });
+  };
+
+  const handleInlineProductTextChange = (index, value) => {
+    const product = vendorProducts.find((item) =>
+      item.vendorProductName?.trim().toLowerCase() === value.trim().toLowerCase());
+
+    if (product) {
+      updateInlineItem(index, {
+        itemCode: product.vendorProductCode,
+        vendorProductCode: product.vendorProductCode,
+        productName: product.vendorProductName,
+        description: product.description || '',
+        productValue: Number(product.currentPrice || product.productValue || 0),
+        isFragile: Boolean(product.isFragile),
+        isPerishable: Boolean(product.isPerishable),
+      });
+    } else {
+      updateInlineItem(index, { itemCode: '', vendorProductCode: null, productName: value });
+    }
+    searchHistoricalProducts(value);
   };
 
   const validateForm = () => {
     const errors = {};
+
+    if (showVendorInput && !formData.selectedVendor) errors.selectedVendor = 'Vendor or Walk-in is required';
+    if (isWalkIn) {
+      if (!formData.senderCompanyName.trim()) errors.senderCompanyName = 'Sender company is required';
+      if (!formData.senderContactPhone.trim()) errors.senderContactPhone = 'Sender phone is required';
+      if (!formData.senderStreetName.trim()) errors.senderStreetName = 'Sender street is required';
+    }
 
     // Receiver contact validation
     if (!formData.receiverContactName.trim()) {
@@ -655,6 +890,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     // Package/Items validation
     if (orderItems.length === 0) {
       errors.orderItems = 'Please add at least one item to the package';
+    } else if (orderItems.some((item) => !item.productName?.trim())) {
+      errors.orderItems = 'Enter a product name for every package item';
     }
 
     if (!formData.receiverStreetName.trim()) {
@@ -681,13 +918,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     }
 
     // COD amount validation
-    if (formData.cashOnDelivery && (!formData.codAmount || parseFloat(formData.codAmount) <= 0)) {
-      errors.codAmount = 'COD amount is required when Cash on Delivery is enabled';
-    }
-
-    // Additional fee amount validation
-    if (formData.additionalFeeAmount && (isNaN(formData.additionalFeeAmount) || parseFloat(formData.additionalFeeAmount) < 0)) {
-      errors.additionalFeeAmount = 'Additional fee amount must be a valid positive number';
+    if (formData.cashOnDelivery && itemValueTotal <= 0) {
+      errors.codAmount = 'COD requires the total item value to be greater than zero';
     }
 
     setValidationErrors(errors);
@@ -698,7 +930,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     const errors = {};
 
     if (formStep === 0) {
-      if (!formData.originDCCode && !user?.AssignedVendor?.DefaultDCCode) errors.originDCCode = 'Sorting area is required';
+      if (showVendorInput && !formData.selectedVendor) errors.selectedVendor = 'Vendor or Walk-in is required';
+      if (isWalkIn && !formData.senderCompanyName.trim()) errors.senderCompanyName = 'Sender company is required';
+      if (isWalkIn && !formData.senderContactPhone.trim()) errors.senderContactPhone = 'Sender phone is required';
+      if (isWalkIn && !formData.senderStreetName.trim()) errors.senderStreetName = 'Sender street is required';
+      if (!formData.originDCCode && !user?.AssignedVendor?.DefaultDCCode) errors.originDCCode = 'Consolidation centre is required';
     } else if (formStep === 1) {
       if (!formData.receiverContactName.trim()) errors.receiverContactName = 'Receiver contact name is required';
       if (!formData.receiverContactPhone.trim()) errors.receiverContactPhone = 'Receiver phone number is required';
@@ -708,6 +944,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       if (!formData.shipmentSize) errors.shipmentSize = 'Package size is required';
       if (zonePricingOptions.length && !selectedPriceZoneID) errors.priceZoneID = 'Price zone is required';
       if (!orderItems.length) errors.orderItems = 'Please add at least one item to the package';
+      if (formData.cashOnDelivery && itemValueTotal <= 0) errors.codAmount = 'COD requires the total item value to be greater than zero';
     }
 
     setValidationErrors((current) => ({ ...current, ...errors }));
@@ -745,9 +982,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
     try {
       // Prepare order data according to the ShipmentOrderTx schema
-      const additionalFeeAmount = Number.parseFloat(formData.additionalFeeAmount) || 0;
-      const additionalFee = formData.feeType === 'discount' ? -additionalFeeAmount : additionalFeeAmount;
-
       // Get origin DC code - prioritize manually entered value
       const originDC = formData.originDCCode || (showVendorInput 
         ? formData.selectedVendor?.vendor?.defaultDCCode 
@@ -755,21 +989,21 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
       const orderData = {
         // Vendor and DC codes
-        vendorCode: formData.selectedVendor?.value || user?.AssignedVendor?.VendorCode,
+        vendorCode: isWalkIn ? '' : (formData.selectedVendor?.value || user?.AssignedVendor?.VendorCode),
         vendorStoreCode: formData.vendorStoreCode || '',
         deliveryTypeCode: formData.deliveryTypeCode,
         originDCCode: originDC,
-        destinationDCCode: getSelectedDC() || '',
+        destinationDCCode: formData.destinationDCCode || originDC || getSelectedDC() || '',
         AddedBy:user?.UserCode,
         // Shipping rate and fees
         shipmentRateNO: shippingRate?.ShipmentRateNO || '',
         priceZoneID: selectedPriceZoneID ? Number(selectedPriceZoneID) : null,
         serviceFee: shippingRate?.RateAmount || 0,
-        additionalFee: additionalFee,
+        additionalFee: 0,
         
         // COD settings
         cashOnDeliveryRequired: formData.cashOnDelivery,
-        cashOnDeliveryAmount: formData.cashOnDelivery ? Number.parseFloat(formData.codAmount) || 0 : 0,
+        cashOnDeliveryAmount: formData.cashOnDelivery ? itemValueTotal : 0,
         
         // Pickup and delivery
         hasPickUp: formData.hasPickUp,
@@ -827,7 +1061,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       // Success - Store order response and move to payment step
       setOrderResponse({
         ...response,
-        totalAmount: (shippingRate?.RateAmount || 0) + additionalFee,
+        totalAmount: shippingRate?.RateAmount || 0,
         isCashOnDelivery: formData.cashOnDelivery
       });
       setCurrentStep('payment');
@@ -878,15 +1112,13 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
       deliveryTypeCode: '',
       originDCCode: '',
       destinationDCCode: '',
-      shipmentSize: '',
+      shipmentSize: 'SMALL',
       cashOnDelivery: false,
       codAmount: '',
       hasPickUp: true,
       notes: '',
       pickupETA: '',
       deliveryETA: '',
-      feeType: 'additional fee',
-      additionalFeeAmount: '',
     agreeToTerms: true
     });
     setOrderItems([]);
@@ -942,7 +1174,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
         <nav className="package-stepper" aria-label="Package creation progress">
           {[
-            ['Vendor & Route', 'Store, sorting area'],
+            ['Vendor & Route', 'Vendor, consolidation centre'],
             ['Receiver', 'Contact, address'],
             ['Package', 'Items, size, fees'],
             ['Review', 'Confirm & create'],
@@ -980,12 +1212,20 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                    {/* Vendor Selection */}
                   {showVendorInput && (
                     <div className="mb-3">
-                      <Form.Label>Vendor</Form.Label>
+                      <Form.Label>Vendor *</Form.Label>
                       <Select
                         name="selectedVendor"
                         value={formData.selectedVendor}
                         onChange={(selectedOption) => {
-                          setFormData(prev => ({ ...prev, selectedVendor: selectedOption }));
+                          setFormData(prev => ({
+                            ...prev,
+                            selectedVendor: selectedOption,
+                            vendorStoreCode: '',
+                            ...(selectedOption?.isWalkIn ? {
+                              senderCompanyName: '', senderContactPhone: '', senderStreetName: '', senderArea: '', senderCity: ''
+                            } : {})
+                          }));
+                          setValidationErrors((current) => ({ ...current, selectedVendor: '' }));
                         }}
                         onInputChange={(inputValue) => {
                           if (inputValue) {
@@ -994,13 +1234,13 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                             setVendorParams({});
                           }
                         }}
-                        options={Array.isArray(vendors) ? vendors.map(vendor => ({
+                        options={[WALK_IN_VENDOR, ...(Array.isArray(vendors) ? vendors.map(vendor => ({
                           value: vendor.vendorCode,
                           label: vendor.vendorName,
                           vendor: vendor
-                        })) : []}
-                        placeholder="Walk-in / Default pricing"
-                        isClearable
+                        })) : [])]}
+                        placeholder="Select vendor or Walk-in..."
+                        isClearable={false}
                         isSearchable
                         isLoading={vendorsLoading}
                         className={validationErrors.selectedVendor ? 'is-invalid' : ''}
@@ -1024,7 +1264,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                   )}
 
                   {/* Store Selection */}
-                  <div className="mb-3">
+                  {!isWalkIn && <div className="mb-3">
                     <Form.Label>Store</Form.Label>
                     <Select
                       name="vendorStoreCode"
@@ -1062,19 +1302,53 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         Error loading stores: {vendorStoresError}
                       </div>
                     )}
-                  </div>
+                  </div>}
+
+                  {showVendorInput && isWalkIn && (
+                    <div className="mb-3 p-3 border rounded">
+                      <h6 className="mb-3">Walk-in sender details</h6>
+                      <Row>
+                        <Col md={6} className="mb-3">
+                          <Form.Label>Sender Company *</Form.Label>
+                          {renderSuggestionInput('SenderCompanyName', 'senderCompanyName', 'Type or select company...')}
+                        </Col>
+                        <Col md={6} className="mb-3">
+                          <Form.Label>Sender Phone *</Form.Label>
+                          {renderSuggestionInput('SenderContactPhone', 'senderContactPhone', 'Type or select phone...')}
+                        </Col>
+                        <Col md={12}>
+                          <Form.Label>Sender Street / Building *</Form.Label>
+                          <div className="position-relative">
+                            <Form.Control
+                              ref={senderStreetRef}
+                              type="text"
+                              name="senderStreetName"
+                              value={formData.senderStreetName}
+                              onChange={handleInputChange}
+                              placeholder="Search building, business, landmark or street..."
+                              autoComplete="off"
+                              isInvalid={!!validationErrors.senderStreetName}
+                            />
+                            {placesStatus === 'loading' && <Spinner size="sm" className="position-absolute top-50 end-0 translate-middle-y me-3" />}
+                          </div>
+                          <Form.Control.Feedback type="invalid">{validationErrors.senderStreetName}</Form.Control.Feedback>
+                          <Form.Text>Searches Google Places across buildings, businesses, landmarks and addresses.</Form.Text>
+                        </Col>
+                      </Row>
+                    </div>
+                  )}
 
                   {/* Sorting area */}
                   <div className="mb-4">
                     <Row>
                       <Col md={12} className="mb-3">
-                        <Form.Label>Sorting Area</Form.Label>
+                        <Form.Label>Consolidation Centre</Form.Label>
                         <Select
                           name="originDCCode"
                           value={dcOptions.find(option => option.value === formData.originDCCode) || null}
                           onChange={handleOriginDCChange}
                           options={dcOptions}
-                          placeholder="Select sorting area..."
+                          placeholder="Select consolidation centre..."
                           isClearable
                           isSearchable
                           className={validationErrors.originDCCode ? 'is-invalid' : ''}
@@ -1095,7 +1369,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           </div>
                         )}
                         <Form.Text className="text-muted">
-                          Sorting area responsible for this package
+                          Consolidation centre responsible for this package
                         </Form.Text>
                       </Col>
                     </Row>
@@ -1108,31 +1382,13 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     <Row>
                       <Col md={6} className="mb-3">
                         <Form.Label>Receiver Contact Name *</Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="receiverContactName"
-                          placeholder="Enter receiver name"
-                          value={formData.receiverContactName}
-                          onChange={handleInputChange}
-                          isInvalid={!!validationErrors.receiverContactName}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.receiverContactName}
-                        </Form.Control.Feedback>
+                        {renderSuggestionInput('ReceiverContactName', 'receiverContactName', 'Type or select receiver name...')}
+                        {validationErrors.receiverContactName && <div className="invalid-feedback d-block">{validationErrors.receiverContactName}</div>}
                       </Col>
                       <Col md={6} className="mb-3">
                         <Form.Label>Receiver Phone Number *</Form.Label>
-                        <Form.Control
-                          type="tel"
-                          name="receiverContactPhone"
-                          placeholder="e.g., +254712345678"
-                          value={formData.receiverContactPhone}
-                          onChange={handleInputChange}
-                          isInvalid={!!validationErrors.receiverContactPhone}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.receiverContactPhone}
-                        </Form.Control.Feedback>
+                        {renderSuggestionInput('ReceiverContactPhone', 'receiverContactPhone', 'Type or select phone...')}
+                        {validationErrors.receiverContactPhone && <div className="invalid-feedback d-block">{validationErrors.receiverContactPhone}</div>}
                       </Col>
                     </Row>
 
@@ -1141,21 +1397,22 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     <Row>
                       <Col md={6} className="mb-3">
                         <Form.Label>Street *</Form.Label>
-                        <Form.Control
-                          ref={receiverStreetRef}
-                          type="text"
-                          name="receiverStreetName"
-                          placeholder="Search for a street or place"
-                          value={formData.receiverStreetName}
-                          onChange={handleInputChange}
-                          autoComplete="off"
-                          isInvalid={!!validationErrors.receiverStreetName}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {validationErrors.receiverStreetName}
-                        </Form.Control.Feedback>
+                        <div className="position-relative">
+                          <Form.Control
+                            ref={receiverStreetRef}
+                            type="text"
+                            name="receiverStreetName"
+                            value={formData.receiverStreetName}
+                            onChange={handleInputChange}
+                            placeholder="Search building, business, landmark or street..."
+                            autoComplete="off"
+                            isInvalid={!!validationErrors.receiverStreetName}
+                          />
+                          {placesStatus === 'loading' && <Spinner size="sm" className="position-absolute top-50 end-0 translate-middle-y me-3" />}
+                        </div>
+                        <Form.Control.Feedback type="invalid">{validationErrors.receiverStreetName}</Form.Control.Feedback>
                         <Form.Text className="place-search-hint">
-                          {placesStatus === 'ready' ? 'Powered by Google Places. Select a suggestion to calculate the driving distance.' : placesStatus === 'loading' ? 'Loading Google Places...' : placesStatus}
+                          {placesStatus === 'ready' ? 'Google Places includes buildings, businesses, landmarks and street addresses.' : placesStatus === 'loading' ? 'Loading Google Places...' : placesStatus}
                         </Form.Text>
                         {roadDistanceStatus === 'loading' && <div className="road-distance-chip loading"><Spinner size="sm" /> Calculating road distance...</div>}
                         {roadDistanceStatus === 'ready' && roadDistance && <div className="road-distance-chip"><MapPin size={13} /> {roadDistance.text} by road</div>}
@@ -1205,7 +1462,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         <Button 
                           variant="outline-primary" 
                           size="sm"
-                          onClick={() => setShowAddItemModal(true)}
+                          onClick={handleAddInlineItem}
+                          className="inline-add-item-button"
                         >
                           <Plus size={14} className="me-1" />
                           Add Item
@@ -1219,60 +1477,51 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       )}
 
                       {orderItems.length === 0 ? (
-                        <div className="text-center py-4 border rounded">
+                        <div className="inline-items-box empty">
                           <Package size={32} className="text-muted mb-2" />
                           <div className="text-muted">No items added yet</div>
                           <small className="text-muted">Click "Add Item" to add items to your package</small>
                         </div>
                       ) : (
-                        <div className="items-list">
+                        <div className="inline-items-box">
                           {orderItems.map((item, index) => (
-                            <div key={index} className="item-card border rounded p-3 mb-2">
-                              <div className="d-flex justify-content-between align-items-start">
-                                <div className="flex-grow-1">
-                                  <div className="d-flex align-items-center mb-1">
-                                    <strong>{item.productName}</strong>
-                                    {showBadges && (
-                                      <div className="ms-2">
-                                        {item.isFragile && (
-                                          <span className="badge bg-warning me-1">Fragile</span>
-                                        )}
-                                        {item.isPerishable && (
-                                          <span className="badge bg-info me-1">Perishable</span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="text-muted small mb-1">{item.description}</div>
-                                  <div className="text-muted small">
-                                    <span className="me-3">Weight: {item.weight ? `${item.weight}kg` : 'Not specified'}</span>
-                                    {item.productValue > 0 && (
-                                      <span className="me-3">Value: KES {item.productValue.toFixed(2)}</span>
-                                    )}
-                                  </div>
-                                  {item.remarks && (
-                                    <div className="text-muted small mt-1">
-                                      <em>Remarks: {item.remarks}</em>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button
-                                  variant="outline-danger"
-                                  size="sm"
-                                  onClick={() => handleRemoveItem(index)}
-                                  title="Remove Item"
-                                >
-                                  <Trash2 size={14} />
-                                </Button>
+                            <div key={index} className="inline-item-row">
+                              <div className="inline-item-product">
+                                <Form.Label>Product</Form.Label>
+                                  <CreatableSelect
+                                    options={productOptions}
+                                    value={item.productName ? { value: item.vendorProductCode || item.productName, label: item.productName } : null}
+                                    onChange={(option) => handleInlineProductChange(index, option)}
+                                    onInputChange={searchHistoricalProducts}
+                                    placeholder="Type or select a product..."
+                                    isClearable
+                                    isSearchable
+                                    isLoading={vendorProductsLoading || historicalProductsLoading}
+                                    formatCreateLabel={(value) => `Use new product: ${value}`}
+                                    classNamePrefix="inline-product-select"
+                                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+                                  />
                               </div>
+                              <div>
+                                <Form.Label>Qty</Form.Label>
+                                <Form.Control type="number" min="1" step="1" value={item.quantity || 1}
+                                  onChange={(event) => updateInlineItem(index, { quantity: Math.max(1, Number.parseInt(event.target.value) || 1) })} />
+                              </div>
+                              <div>
+                                <Form.Label>Unit Price</Form.Label>
+                                <Form.Control type="number" min="0" step="0.01" value={item.productValue || ''} placeholder="0"
+                                  onChange={(event) => updateInlineItem(index, { productValue: Math.max(0, Number.parseFloat(event.target.value) || 0) })} />
+                              </div>
+                              <div className="inline-item-total">
+                                <Form.Label>&nbsp;</Form.Label>
+                                <strong>KES {(Number(item.quantity || 1) * Number(item.productValue || 0)).toLocaleString()}</strong>
+                              </div>
+                              <button type="button" className="inline-remove-item" onClick={() => handleRemoveItem(index)} title="Remove item" aria-label={`Remove ${item.productName || 'item'}`}>
+                                <Trash2 size={16} />
+                              </button>
                             </div>
                           ))}
-                          
-                          <div className="mt-2 text-muted small">
-                            Total Items: {orderItems.length} | 
-                            Total Weight: {orderItems.reduce((sum, item) => sum + (item.weight || 0), 0).toFixed(2)}kg |
-                            Total Value: KES {orderItems.reduce((sum, item) => sum + item.productValue, 0).toFixed(2)}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -1337,7 +1586,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         id="cash-on-delivery"
                         name="cashOnDelivery"
                         checked={formData.cashOnDelivery}
-                        onChange={handleInputChange}
+                        onChange={handleCodChange}
                         className="custom-switch"
                       />
                     </div>
@@ -1349,13 +1598,9 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                           <span className="input-group-text">KES</span>
                           <Form.Control
                             type="number"
-                            placeholder="0.00"
                             name="codAmount"
-                            value={formData.codAmount}
-                            onChange={handleInputChange}
-                            isInvalid={!!validationErrors.codAmount}
-                            min="0"
-                            step="0.01"
+                            value={itemValueTotal.toFixed(2)}
+                            readOnly
                           />
                         </div>
                         <Form.Control.Feedback type="invalid">
@@ -1363,51 +1608,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         </Form.Control.Feedback>
                       </div>
                     )}
-                  </div>
-
-                  {/* Additional Fee */}
-                  <div className="mb-3">
-                    <div className="p-3 border rounded additional-fee-panel">
-                      <h6 className="mb-3">Additional Fee</h6>
-                      <Row>
-                        <Col md={6}>
-                          <Form.Label>Fee Type</Form.Label>
-                          <Form.Select
-                            name="feeType"
-                            value={formData.feeType}
-                            onChange={handleInputChange}
-                          >
-                            <option value="additional fee">Additional Fee</option>
-                            <option value="discount">Discount</option>
-                          </Form.Select>
-                        </Col>
-                        <Col md={6}>
-                          <Form.Label>Amount</Form.Label>
-                          <div className="input-group">
-                            <span className="input-group-text">KES</span>
-                            <Form.Control
-                              type="number"
-                              placeholder="0.00"
-                              name="additionalFeeAmount"
-                              value={formData.additionalFeeAmount}
-                              onChange={handleInputChange}
-                              isInvalid={!!validationErrors.additionalFeeAmount}
-                              min="0"
-                              step="0.01"
-                            />
-                          </div>
-                          <Form.Control.Feedback type="invalid">
-                            {validationErrors.additionalFeeAmount}
-                          </Form.Control.Feedback>
-                        </Col>
-                      </Row>
-                      <small className="text-muted mt-2 d-block">
-                        {formData.feeType === 'discount' 
-                          ? 'This amount will be deducted from the total cost' 
-                          : 'This amount will be added to the total cost'
-                        }
-                      </small>
-                    </div>
                   </div>
 
                   <div className="mb-3">
@@ -1433,7 +1633,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                       <header><h6>Vendor &amp; Route</h6><button type="button" onClick={() => setFormStep(0)}>Edit</button></header>
                       <div className="review-grid">
                         <div><small>Vendor</small><strong>{formData.selectedVendor?.label || user?.AssignedVendor?.VendorName || 'Current vendor'}</strong></div>
-                        <div><small>Sorting area</small><strong>{dcOptions.find((option) => option.value === formData.originDCCode)?.label || formData.originDCCode}</strong></div>
+                        <div><small>Consolidation centre</small><strong>{dcOptions.find((option) => option.value === formData.originDCCode)?.label || formData.originDCCode}</strong></div>
                       </div>
                     </section>
                     <section>
@@ -1621,17 +1821,6 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                     </div>
                   )}
 
-                  {formData.additionalFeeAmount && parseFloat(formData.additionalFeeAmount) > 0 && (
-                    <div className="summary-item">
-                      <div className="summary-label">
-                        {formData.feeType === 'discount' ? 'Discount' : 'Additional Fee'}
-                      </div>
-                      <div className={`summary-value ${formData.feeType === 'discount' ? 'text-success' : 'text-danger'}`}>
-                        {formData.feeType === 'discount' ? '-' : '+'}KES {parseFloat(formData.additionalFeeAmount).toFixed(2)}
-                      </div>
-                    </div>
-                  )}
-
                   <hr />
 
                   <div className="d-flex justify-content-between align-items-center">
@@ -1653,7 +1842,9 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         </div>
                       ) : (
                         <span className="text-muted">
-                          Select customer and delivery type
+                          {!formData.shipmentSize
+                            ? 'Select a package size to calculate'
+                            : 'No matching active price found'}
                         </span>
                       )}
                     </div>

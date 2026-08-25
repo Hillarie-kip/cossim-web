@@ -1,6 +1,21 @@
 import { api } from "@/lib/apiClient";
 import apiRoutes from "@/constants/apis";
 
+export const getShipmentProductNames = async (searchTerm = "", limit = 100) => {
+    const params = new URLSearchParams();
+    if (searchTerm.trim()) params.set("searchTerm", searchTerm.trim());
+    params.set("limit", String(limit));
+    const response = await api.get(`${apiRoutes.shipment.getShipmentProductNames}?${params.toString()}`);
+    return response.data;
+};
+
+export const getShipmentFieldSuggestions = async (field, searchTerm = "", limit = 50) => {
+    const params = new URLSearchParams({ field, limit: String(limit) });
+    if (searchTerm.trim()) params.set("searchTerm", searchTerm.trim());
+    const response = await api.get(`${apiRoutes.shipment.getShipmentFieldSuggestions}?${params.toString()}`);
+    return response.data;
+};
+
 /**
  * Shipment Service
  * Handles all shipment-related API calls
@@ -326,6 +341,7 @@ export const getHandoverBatchList = async (params = {}) => {
 
         if (params.handoverCode) queryParams.append('handoverCode', params.handoverCode);
         if (params.riderUserCode) queryParams.append('riderUserCode', params.riderUserCode);
+        if (params.courierCode) queryParams.append('courierCode', params.courierCode);
         if (params.FromDCCode) queryParams.append('FromDCCode', params.FromDCCode);
         if (params.ToDCCode) queryParams.append('ToDCCode', params.ToDCCode);
         if (params.DestinationDCCode) queryParams.append('DestinationDCCode', params.DestinationDCCode);
@@ -361,6 +377,20 @@ export const completeHandoverBatch = async (data) => {
         throw new Error(error?.response?.data?.Message || error.message || 'Failed to complete handover batch.');
     }
 };
+
+export const uploadHandoverReceipt = async (file) => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await api.post(apiRoutes.shipment.uploadHandoverReceipt, formData);
+        return response.data;
+    } catch (error) {
+        throw new Error(error?.response?.data?.Message || error.message || 'Failed to upload handover receipt.');
+    }
+};
+
+export const getHandoverReceiptUrl = (imageID) =>
+    imageID ? `${apiRoutes.shipment.getHandoverReceipt}?imageID=${encodeURIComponent(imageID)}` : '';
 
 export const editHandoverBatch = async (data) => {
     try {
@@ -629,6 +659,7 @@ const shipmentService = {
     getShipmentTimeline,
     postShipmentHandoverBatch,
     completeHandoverBatch,
+    uploadHandoverReceipt,
     editHandoverBatch,
     getHandoverBatchList,
     getHandoverItems,

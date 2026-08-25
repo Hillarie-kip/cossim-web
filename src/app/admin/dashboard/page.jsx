@@ -11,6 +11,7 @@ import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useAuth } from "@/contexts/AuthContext";
 import styles from "./dashboard.module.scss";
 import PackagesList from "@/app/admin/(operations)/packages/page";
+import { RoleType } from "@/constants/user-roles";
 
 const fallbackStatuses = [["Delivered",120,59.4],["In Transit",34,16.8],["Processing",28,13.9],["Returned",20,9.9]].map(([StatusName,OrderCount,PercentageOfOrders])=>({StatusName,OrderCount,PercentageOfOrders}));
 const fallbackAging = [["0–1 day",84],["2–3 days",61],["4–7 days",39],["8–14 days",13],["15+ days",5]].map(([AgingBucket,OrderCount])=>({AgingBucket,OrderCount}));
@@ -45,17 +46,20 @@ export default function DashboardPage(){
   const {fetchShipmentOrder}=useShipment();
   const {filters}=useGlobalFilters();
   const {user}=useAuth();
+  const roleCodes=useMemo(()=>new Set((user?.AssignedRoles||[]).map(role=>role.RoleTypeCode)),[user]);
+  const isVendorOnly=roleCodes.has(RoleType.VENDOR)&&!roleCodes.has(RoleType.ADMIN);
   const assignedDCs=useMemo(()=>Array.isArray(user?.AssignedDistributionCenter)?user.AssignedDistributionCenter:[],[user]);
   const assignedDCCodes=assignedDCs.map(dc=>dc.DCCode||dc.dcCode).filter(Boolean);
-  const activeDCCodes=String(filters.dcCodes||filters.dcCode||"").split(",").filter(code=>assignedDCCodes.includes(code)).join(",");
+  const requestedDCCodes=String(filters.dcCodes||filters.dcCode||"");
+  const activeDCCodes=requestedDCCodes==="__ALL__"||requestedDCCodes.startsWith("__ALL_EXCEPT__:")?requestedDCCodes:requestedDCCodes.split(",").filter(code=>assignedDCCodes.includes(code)).join(",");
   const activeDCCode=activeDCCodes.split(",")[0]||"";
   const [query,setQuery]=useState("");
   const [searchResult,setSearchResult]=useState(null);
   const [searchLoading,setSearchLoading]=useState(false);
   const [searchError,setSearchError]=useState("");
   const [selectedStatus,setSelectedStatus]=useState(null);
-  useEffect(()=>{clearShipmentOrderAnalytics();if(!activeDCCodes)return;fetchShipmentOrderAnalytics({startDate:`${filters.startDate}T00:00:00`,endDate:`${filters.endDate}T23:59:59`,vendorCode:filters.vendorCode||undefined,originDCCode:activeDCCodes,destinationDCCode:activeDCCodes}).catch(()=>{});},[fetchShipmentOrderAnalytics,filters.startDate,filters.endDate,filters.vendorCode,activeDCCodes]);
-  const scopedAnalytics=activeDCCodes?shipmentOrderAnalytics:null;
+  useEffect(()=>{clearShipmentOrderAnalytics();if(!isVendorOnly&&!activeDCCodes)return;fetchShipmentOrderAnalytics({startDate:`${filters.startDate}T00:00:00`,endDate:`${filters.endDate}T23:59:59`,vendorCode:filters.vendorCode||undefined,originDCCode:activeDCCodes||undefined,destinationDCCode:activeDCCodes||undefined}).catch(()=>{});},[fetchShipmentOrderAnalytics,filters.startDate,filters.endDate,filters.vendorCode,activeDCCodes,isVendorOnly]);
+  const scopedAnalytics=(isVendorOnly||activeDCCodes)?shipmentOrderAnalytics:null;
   const summary=readAnalyticsValue(scopedAnalytics,"Summary",{});
   const statuses=readAnalyticsArray(scopedAnalytics,"StatusAnalytics");
   const risks=readAnalyticsArray(scopedAnalytics,"CurrentSLARisk");
@@ -92,7 +96,7 @@ export default function DashboardPage(){
   ];
   const handleShipmentSearch=async event=>{
     event.preventDefault();
-    if(!activeDCCode){setSearchError("No distribution center is assigned to this user.");return;}
+    if(!isVendorOnly&&!activeDCCode){setSearchError("No distribution center is assigned to this user.");return;}
     const orderNO=query.trim();
     if(!orderNO)return;
     setSearchLoading(true);setSearchError("");setSearchResult(null);

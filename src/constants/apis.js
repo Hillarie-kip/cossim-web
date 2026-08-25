@@ -119,6 +119,7 @@ const apiRoutes = {
   },
 
   shipment: {
+    getShipmentFieldSuggestions: `${API_BASE}/api/Shipment/GetShipmentFieldSuggestions`,
     deliveryType: `${API_BASE}/api/Shipment/GetDeliveryType`,
     createOrder: `${API_BASE}/api/Shipment/PostShipmentOrderTx`,
     getOrdersByVendor: `${API_BASE}/api/Shipment/GetShipmentOrdersByVendor`,
@@ -129,6 +130,8 @@ const apiRoutes = {
     getShipmentTimeline: `${API_BASE}/api/Shipment/GetShipmentTimeline`,
     postShipmentHandoverBatch: `${API_BASE}/api/Shipment/PostShipmentHandoverBatchTx`,
     completeHandoverBatch: `${API_BASE}/api/Shipment/CompleteHandoverBatchTx`,
+    uploadHandoverReceipt: `${API_BASE}/api/Shipment/UploadHandoverReceipt`,
+    getHandoverReceipt: `${API_BASE}/api/Shipment/GetHandoverReceipt`,
     editHandoverBatch: `${API_BASE}/api/Shipment/EditHandoverBatchTx`,
     getHandoverBatchList: `${API_BASE}/api/Shipment/GetHandoverBatchList`,
     getHandoverItems: `${API_BASE}/api/Shipment/GetHandoverItems`,
@@ -139,6 +142,7 @@ const apiRoutes = {
     postRiderManifest: `${API_BASE}/api/Shipment/PostRiderManifestTx`,
     getShipmentOrder: `${API_BASE}/api/Shipment/GetShipmentOrder`,
     getShipmentOrderItems: `${API_BASE}/api/Shipment/GetShipmentOrderItems`,
+    getShipmentProductNames: `${API_BASE}/api/Shipment/GetShipmentProductNames`,
     getShipmentOrderPayment: `${API_BASE}/api/Shipment/GetShipmentOrderPayment`,
     removeManifestOrder: `${API_BASE}/api/Shipment/RemoveManifestOrder`,
     downloadExcelTemplate: `${API_BASE}/api/Shipment/DownloadShipmentExcelTemplate`,

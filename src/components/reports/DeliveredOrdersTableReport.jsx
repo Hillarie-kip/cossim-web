@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Datatable from "@/core/pagination/datatable";
 import TableExportIcons from "@/components/TableExportIcons";
-import { getHandoverBatchList, getShipmentOrders } from "@/services/shipmentService";
+import { getHandoverBatchList, getHandoverReceiptUrl, getShipmentOrders } from "@/services/shipmentService";
 import notify from "@/lib/toast";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 
@@ -91,10 +91,12 @@ export default function DeliveredOrdersTableReport({
     { title: "Handover code", dataIndex: "HandoverCode", width: 220, render: (value) => <strong className="text-primary">{text(value)}</strong> },
     { title: "Source DC", dataIndex: "FromDCName", width: 210, render: (_, row) => <div><strong>{text(row.FromDCName || row.FromDCCode)}</strong><small className="d-block text-muted">{text(row.FromDCCode)}</small></div> },
     { title: "Destination DC", dataIndex: "ToDCName", width: 210, render: (_, row) => <div><strong>{text(row.ToDCName || row.ToDCCode)}</strong><small className="d-block text-muted">{text(row.ToDCCode)}</small></div> },
-    { title: "Rider", dataIndex: "RiderName", width: 190, render: (_, row) => <div><strong>{text(row.RiderName || "Unassigned")}</strong><small className="d-block text-muted">{text(row.RiderUserCode)}</small></div> },
+    { title: "Courier", dataIndex: "RiderName", width: 190, render: (_, row) => <div><strong>{text(row.RiderName || "Unassigned")}</strong><small className="d-block text-muted">{text(row.RiderUserCode)}</small></div> },
+    { title: "Packages", dataIndex: "TotalItems", width: 120, align: "center", render: (value) => `${Number(value || 0)} package${Number(value || 0) === 1 ? "" : "s"}` },
+    { title: "Cost", dataIndex: "CourierCost", width: 140, align: "right", render: (value) => value == null ? "-" : `KES ${money(value)}` },
+    { title: "Uploaded image", dataIndex: "ReceiptImageID", width: 150, align: "center", render: (imageID) => imageID ? <a className="btn btn-sm btn-outline-primary" href={getHandoverReceiptUrl(imageID)} target="_blank" rel="noreferrer">View image</a> : "-" },
     { title: "Status", dataIndex: "StatusID", width: 150, render: (value) => Number(value) === 3 ? "Received" : Number(value) === 1 ? "Pending Receipt" : "-" },
-    { title: "Created by", dataIndex: "CreatedBy", width: 170, render: text },
-    { title: "Notes", dataIndex: "Notes", width: 260, ellipsis: true, render: text },
+    { title: "Created by", dataIndex: "CreatedByName", width: 190, render: (_, row) => <div><strong>{text(row.CreatedByName || row.CreatedBy || row.ConfirmedBy)}</strong>{row.CreatedByName && <small className="d-block text-muted">{text(row.CreatedBy)}</small>}</div> },
     { title: "Date created", dataIndex: "DateAdded", width: 180, render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
   ] : [
     { title: "Order number", dataIndex: "OrderNO", width: 210, render: (value) => <strong className="text-primary">{text(value)}</strong> },
@@ -200,8 +202,17 @@ export default function DeliveredOrdersTableReport({
           columns={columns}
           dataSource={rows}
           rowKey={isConsolidated ? "HandoverCode" : "OrderNO"}
+          rowSelection={false}
+          expandable={isConsolidated ? {
+            rowExpandable: (row) => Number(row.TotalItems || 0) > 0,
+            expandedRowRender: (batch) => {
+              const packageRows = Array.isArray(batch.Packages) ? batch.Packages : [];
+              if (!packageRows.length) return <p className="text-muted m-3">No packages found in this batch.</p>;
+              return <div className="table-responsive p-2"><table className="table table-sm align-middle mb-0"><thead><tr><th>Order number</th><th>Vendor</th><th>Customer</th><th>Status</th></tr></thead><tbody>{packageRows.map((item) => <tr key={item.OrderNO}><td><strong className="text-primary">{text(item.OrderNO)}</strong></td><td>{text(item.VendorName || item.VendorCode)}</td><td>{text(item.CustomerName)}</td><td>{text(item.StatusName)}</td></tr>)}</tbody></table></div>;
+            },
+          } : undefined}
           loading={loading}
-          scroll={{ x: isConsolidated ? 1560 : 1750, y: 600 }}
+          scroll={{ x: isConsolidated ? 1780 : 1750, y: 600 }}
           emptyTitle={emptyTitle}
           emptyDescription={`No ${isConsolidated ? "handover batches" : "orders"} match the selected filters.`}
           pagination={{

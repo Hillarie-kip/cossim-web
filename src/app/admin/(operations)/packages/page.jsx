@@ -25,7 +25,7 @@ import SSRSelect from "@/components/SSRSelect";
 import { all_routes } from "@/Router/all_routes";
 import Datatable from "@/core/pagination/datatable";
 import useShipment from "@/hooks/useShipment";
-import { completeHandoverBatch, editHandoverBatch, getHandoverBatchList, getShipmentOrders, getShipmentOrderItems, getShipmentTimeline, postShipmentHandoverBatch } from "@/services/shipmentService";
+import { completeHandoverBatch, editHandoverBatch, getHandoverBatchList, getShipmentOrders, getShipmentOrderItems, getShipmentTimeline, postShipmentHandoverBatch, uploadHandoverReceipt } from "@/services/shipmentService";
 import useAdmin from "@/hooks/useAdmin";
 import { useVendors } from "@/hooks/useVendors";
 import useStickerDownload from "@/hooks/useStickerDownload";
@@ -40,6 +40,7 @@ import CreatePackageForm from "@/components/CreatePackageForm";
 import { formatLocalDateOnly } from "@/lib/utils/dateFormat";
 import { exportColumns, pdfColumns } from "./components/tableColumns";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 const getStatusName = (status) =>
   status?.statusName ||
@@ -279,15 +280,65 @@ const formatSlaNumber = (value) => {
   return new Intl.NumberFormat("en-KE", { maximumFractionDigits: 2 }).format(number);
 };
 
+const formatExpectedSlaStage = (value) => {
+  const stage = String(value || "").trim();
+  const stages = {
+    "Vendor to Cossim HQ": "Received at Cossim HQ",
+    "Cossim HQ to Cossim DC": "Received at DC",
+    "Cossim HQ to Rider": "Dispatched to Rider",
+    "Rider to Customer": "First Delivery Attempt",
+    "DC to 1st Attempt": "First Attempt",
+    "DC to Second Attempt": "2nd Attempt",
+    "DC to Third Attempt": "3rd Attempt",
+    "DC to Last attempt": "Final Attempt",
+    "DC to reverse state": "Moved to Reverse",
+    "HQ to Vendor": "Returned to Vendor",
+    "Order Delivered": "Delivered",
+  };
+  return stages[stage] || stage || null;
+};
+
+const inferExpectedSlaStage = (order) => {
+  const statusID = Number(order?.StatusID ?? order?.statusID);
+  const deliveryType = String(order?.DeliveryTypeCode || order?.DeliveryType || "").replaceAll(" ", "").toUpperCase();
+  if (statusID === 102 || statusID === 202) return deliveryType.includes("EXPRESS") ? "Dispatched to Rider" : "Received at DC";
+  if ([201, 301, 302, 304, 307, 801, 803].includes(statusID)) return "First Attempt";
+  if (statusID === 305) return "2nd Attempt";
+  if (statusID === 306) return "3rd Attempt";
+  if ([303, 802, 901].includes(statusID)) return "Delivered";
+  if (statusID === 401) return "Moved to Reverse";
+  if (statusID === 402) return "Returned to Vendor";
+  if ([101, 804].includes(statusID)) return "Received at Cossim HQ";
+  return null;
+};
+
 const getOrderSlaTiming = (order) => {
-  const differenceValue = order?.SLATimeDifference ?? order?.slaTimeDifference;
+  const lapseValue = order?.SLATimeLapse ?? order?.slaTimeLapse;
+  const overdueMinutes = order?.SLATimeDifference ?? order?.slaTimeDifference;
   const thresholdValue = order?.SLATimeThreshold ?? order?.slaTimeThreshold;
   const rawUnit = order?.SLATimeUnit ?? order?.slaTimeUnit;
+  const expectedStage = formatExpectedSlaStage(order?.ExpectedStep ?? order?.expectedStep)
+    || inferExpectedSlaStage(order);
+  const normalizedUnit = String(rawUnit || "").trim().toLowerCase();
+  const hasLapse = lapseValue !== null && lapseValue !== undefined && lapseValue !== "";
+  const hasOverdue = overdueMinutes !== null && overdueMinutes !== undefined && overdueMinutes !== "" && Number(overdueMinutes) > 0;
+  const threshold = Number(thresholdValue);
+  // Compatibility for a running API that has not yet exposed SLATimeLapse:
+  // SLATimeDifference is always overdue minutes, so convert it before adding
+  // it to the configured step threshold. Never label raw minutes as days.
+  const legacyElapsed = hasOverdue && Number.isFinite(threshold)
+    ? threshold + Math.ceil(Number(overdueMinutes) / (
+        ["day", "days"].includes(normalizedUnit) ? 1440
+          : ["hour", "hours", "hr", "hrs"].includes(normalizedUnit) ? 60
+            : 1
+      ))
+    : null;
+  const differenceValue = hasLapse ? lapseValue : legacyElapsed;
   const difference = formatSlaNumber(differenceValue);
-  const threshold = formatSlaNumber(thresholdValue);
+  const formattedThreshold = formatSlaNumber(thresholdValue);
   return {
     difference: difference === null ? "-" : `${difference} ${abbreviateSlaUnit(rawUnit, differenceValue)}`.trim(),
-    expected: threshold === null ? "-" : `${threshold} ${abbreviateSlaUnit(rawUnit, thresholdValue)}`.trim(),
+    expected: expectedStage || (formattedThreshold === null ? "-" : `${formattedThreshold} ${abbreviateSlaUnit(rawUnit, thresholdValue)}`.trim()),
   };
 };
 
@@ -313,6 +364,14 @@ const getPackageQueryFilters = () => {
 const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const route = all_routes;
   const urlSearchParams = useSearchParams();
+  const { user } = useAuth();
+  const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isVendorOnly = roleCodes.has(RoleType.VENDOR) && !roleCodes.has(RoleType.ADMIN);
+  const loggedInVendorCode = user?.AssignedVendor?.VendorCode
+    || user?.AssignedVendor?.vendorCode
+    || user?.VendorCode
+    || user?.vendorCode
+    || "";
   const [searchTerm, setSearchTerm] = useState("");
   const [vendorCode, setVendorCode] = useState("");
   const [fromDCCode, setFromDCCode] = useState("");
@@ -393,12 +452,19 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   } = useShipment();
   const { vendors } = useVendors({ pageNo: 1, pageSize: 500 });
   const { filters: globalFilters } = useGlobalFilters();
+  const scopedVendorCode = isVendorOnly ? loggedInVendorCode : vendorCode;
   const selectedGlobalDCCodes = String(globalFilters.dcCodes || globalFilters.dcCode || "")
     .split(",")
     .map((code) => code.trim())
     .filter(Boolean);
+  const rawGlobalDCFilter = String(globalFilters.dcCodes || globalFilters.dcCode || "");
+  const allDCsSelected = rawGlobalDCFilter === "__ALL__";
+  const allExceptSelected = rawGlobalDCFilter.startsWith("__ALL_EXCEPT__:");
+  const excludedGlobalDCCodes = new Set(allExceptSelected
+    ? rawGlobalDCFilter.slice("__ALL_EXCEPT__:".length).split("|").filter(Boolean)
+    : []);
   const shipmentScopeDCCodes = selectedGlobalDCCodes.join(",") || assignedDefaultDCCode || "";
-  const currentDCCode = selectedGlobalDCCodes.length === 1
+  const currentDCCode = !allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1
     ? selectedGlobalDCCodes[0]
     : (selectedGlobalDCCodes.length ? "" : assignedDefaultDCCode || "");
   const {
@@ -529,7 +595,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   }, [activeTask, allInboundBatches, isReceiveTask]);
 
   const loadOutboundBatches = async (pageNo = outboundBatchPage) => {
-    if (!shipmentScopeDCCodes) {
+    if (!shipmentScopeDCCodes && !isVendorOnly) {
       setOutboundBatches([]);
       setOutboundBatchTotal(0);
       return;
@@ -569,7 +635,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   useEffect(() => {
     let active = true;
-    if (!shipmentScopeDCCodes) {
+    if (!shipmentScopeDCCodes && !isVendorOnly) {
       clearShipmentOrder();
       setParentTaskCounts((current) => ({
         ...current,
@@ -585,7 +651,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const commonParams = {
       pageNo: 1,
       countOnly: true,
-      vendorCode: vendorCode || undefined,
+      vendorCode: scopedVendorCode || undefined,
       toDCCode: toDCCode || undefined,
       onlyActive,
       startDate: formatLocalDateOnly(startDate),
@@ -596,6 +662,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       ...commonParams,
       startDate: formatLocalDateOnly(startDate),
       taskType,
+      // Dispatch/handover orders leave the selected DC, so scope them by origin.
+      fromDCCode: taskType === "dispatch" ? shipmentScopeDCCodes : undefined,
+      toDCCode: taskType === "dispatch" ? undefined : commonParams.toDCCode,
       checkSLA: true,
       onBackgroundRefresh: (response) => {
         if (!active) return;
@@ -679,10 +748,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   );
 
   const chooseActionDC = async (actionLabel = "post this action") => {
-    if (selectedGlobalDCCodes.length === 1) return selectedGlobalDCCodes[0];
+    if (!allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1) return selectedGlobalDCCodes[0];
     if (!selectedGlobalDCCodes.length) return assignedDefaultDCCode || "";
 
-    const selectedOptions = selectedGlobalDCCodes.map((code) => {
+    const actionDCCodes = allDCsSelected
+      ? dcOptions.map((option) => option.value)
+      : allExceptSelected
+        ? dcOptions.map((option) => option.value).filter((code) => !excludedGlobalDCCodes.has(code))
+        : selectedGlobalDCCodes;
+    const selectedOptions = actionDCCodes.map((code) => {
       const option = dcOptions.find((item) => item.value === code);
       return [code, option?.label || code];
     });
@@ -706,12 +780,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const buildShipmentOrderParams = (overrides = {}) => {
     const { taskType: requestedTaskType, ...requestOverrides } = overrides;
     const taskType = requestedTaskType || activeTask;
+    const isDispatchTask = taskType === "dispatch";
     return ({
     pageNo: 1,
     pageSize: requestOverrides.pageSize || 1000,
     searchTerm,
-    vendorCode: vendorCode || undefined,
-    toDCCode: toDCCode || undefined,
+    vendorCode: scopedVendorCode || undefined,
     statusIDs: undefined,
     onlyActive,
     startDate: formatLocalDateOnly(startDate),
@@ -720,7 +794,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     sortDir: "ASC",
     ...requestOverrides,
     startDate: formatLocalDateOnly(requestOverrides.startDate || startDate),
-    fromDCCode: undefined,
+    fromDCCode: isDispatchTask ? shipmentScopeDCCodes : undefined,
+    toDCCode: isDispatchTask
+      ? undefined
+      : (requestOverrides.toDCCode || toDCCode || undefined),
     vendorCategoryCode: undefined,
     taskType,
     checkSLA: true,
@@ -728,7 +805,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   };
 
   const loadShipmentOrders = (overrides = {}) => {
-    if (!shipmentScopeDCCodes) {
+    if (!shipmentScopeDCCodes && !isVendorOnly) {
       clearShipmentOrder();
       setSelectedRowKeys([]);
       return Promise.resolve({ Data: [], TotalCount: 0 });
@@ -739,9 +816,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   };
 
   useEffect(() => {
+    if (isVendorOnly && loggedInVendorCode && vendorCode !== loggedInVendorCode) {
+      setVendorCode(loggedInVendorCode);
+    }
+  }, [isVendorOnly, loggedInVendorCode, vendorCode]);
+
+  useEffect(() => {
     const nextStartDate = parsePackageFilterDate(globalFilters.startDate);
     const nextEndDate = parsePackageFilterDate(globalFilters.endDate);
-    const nextVendorCode = globalFilters.vendorCode || "";
+    const nextVendorCode = isVendorOnly ? loggedInVendorCode : (globalFilters.vendorCode || "");
     const availableCodes = new Set(dcOptions.map((option) => option.value));
     const nextDCCode = String(globalFilters.dcCodes || globalFilters.dcCode || "")
       .split(",")
@@ -778,7 +861,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const querySearchTerm = queryFilters.searchTerm || "";
     const effectiveStartDate = queryFilters.startDate || parsePackageFilterDate(globalFilters.startDate);
     const effectiveEndDate = queryFilters.endDate || parsePackageFilterDate(globalFilters.endDate);
-    const effectiveVendorCode = queryFilters.vendorCode || globalFilters.vendorCode || "";
+    const effectiveVendorCode = isVendorOnly
+      ? loggedInVendorCode
+      : (queryFilters.vendorCode || globalFilters.vendorCode || "");
     const requestedDCCode = queryFilters.toDCCode || globalFilters.dcCodes || globalFilters.dcCode || "";
     const availableCodes = new Set(dcOptions.map((option) => option.value));
     const effectiveDCCode = requestedDCCode.split(",").map((code) => code.trim()).filter((code) => code && availableCodes.has(code)).join(",");
@@ -805,12 +890,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setStartDate(effectiveStartDate || null);
     setEndDate(effectiveEndDate || null);
 
+    const initialTaskUsesOriginDC = resolvedInitialTask === "dispatch";
     const initialParams = {
       pageNo: 1,
       pageSize: 1000,
       searchTerm: querySearchTerm,
       vendorCode: effectiveVendorCode || undefined,
-      toDCCode: effectiveDCCode || undefined,
+      fromDCCode: initialTaskUsesOriginDC ? effectiveDCCode || undefined : undefined,
+      toDCCode: initialTaskUsesOriginDC ? undefined : effectiveDCCode || undefined,
       statusIDs: undefined,
       taskType: resolvedInitialTask,
       checkSLA: true,
@@ -824,7 +911,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     // Each hook already records its own error state. Consume rejected requests
     // here so an offline/cache miss cannot escape the effect and trip Next's
     // global error boundary.
-    if (shipmentScopeDCCodes) fetchShipmentOrders(initialParams).catch(() => {});
+    if (shipmentScopeDCCodes || isVendorOnly) fetchShipmentOrders(initialParams).catch(() => {});
     else clearShipmentOrder();
     fetchDistributionCenters({ pageNo: 1, pageSize: 500 }).catch(() => {});
     fetchCouriers().catch(() => {});
@@ -1534,7 +1621,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       if (!order?.OrderNO) return notify.error("Package not found");
       if (batchPanelMode === "confirmed" && getTaskType(order) !== "confirmed") return notify.error("This package is not awaiting confirmation receipt");
       const packageDC = order.LatestLogDCCode || order.CurrentDCCode || order.OriginDCCode;
-      if (selectedGlobalDCCodes.length && packageDC && !selectedGlobalDCCodes.includes(packageDC)) return notify.error(`This package is at ${packageDC}, which is not among the selected DCs.`);
+      const outsideSelectedScope = allExceptSelected
+        ? excludedGlobalDCCodes.has(packageDC)
+        : !allDCsSelected && selectedGlobalDCCodes.length && !selectedGlobalDCCodes.includes(packageDC);
+      if (packageDC && outsideSelectedScope) return notify.error(`This package is at ${packageDC}, which is not among the selected DCs.`);
       setBatchPanelOrders((current) => current.some((item) => item.OrderNO === order.OrderNO) ? current : [...current, order]);
       setBatchScannedKeys((current) => current.includes(order.OrderNO) ? current : [...current, order.OrderNO]);
       setBatchScan("");
@@ -1585,12 +1675,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!isConfirmed) return;
     setBatchSubmitting(true);
     try {
+      const receiptUpload = await uploadHandoverReceipt(batchReceipt);
+      if (receiptUpload?.Error || !receiptUpload?.ImageID) throw new Error(receiptUpload?.Message || "Receipt image upload failed");
       if (existingBatchCode) {
         const response = await completeHandoverBatch({
           handoverCode: existingBatchCode,
           courierCode: batchCourier.value,
           courierCost: Number(batchCourierCost),
-          receiptFileName: batchReceipt.name,
+          receiptImageID: receiptUpload.ImageID,
           notes: `Destination: ${batchDestination?.label || batchDestination?.value || "-"}`,
         });
         if (response?.Error) throw new Error(response.Message || "Failed to complete batch");
@@ -1604,7 +1696,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           toDCCode: batchPanelMode === "reversed" ? actionDCCode : batchDestination.value,
           courierCode: batchCourier.value,
           riderUserCode: "",
-          notes: `${batchPanelMode === "reversed" ? `Reversed orders consolidated for vendor ${batchDestination.label}` : batchPanelMode === "forwardReverse" ? `Past-SLA or declined orders consolidated for return to HQ ${batchDestination.label}` : "Task Management dispatch"}; Courier cost: ${batchCourierCost}; Receipt: ${batchReceipt.name}`,
+          courierCost: Number(batchCourierCost),
+          receiptImageID: receiptUpload.ImageID,
+          notes: `${batchPanelMode === "reversed" ? `Reversed orders consolidated for vendor ${batchDestination.label}` : batchPanelMode === "forwardReverse" ? `Past-SLA or declined orders consolidated for return to HQ ${batchDestination.label}` : "Task Management dispatch"}`,
           shipmentOrderArray: batchScannedKeys.map((orderNO) => ({ orderNO })),
         });
         if (response?.Error) throw new Error(response.Message || "Failed to create batch");
@@ -2446,7 +2540,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               </button>
             ))}
           </div>
-          {(selectedRowKeys.length > 0 || activeTask === "confirmed" || activeTask === "dispatch" || isReceiveTask || activeTask === "forwardReverse" || activeTask === "reversed") && (
+          {isVendorOnly && (
+            <button type="button" onClick={() => setShowImportModal(true)} className="btn btn-outline-primary btn-sm d-flex align-items-center">
+              <UploadCloud className="me-2 iconsize" />Import Orders
+            </button>
+          )}
+          {!isVendorOnly && (selectedRowKeys.length > 0 || activeTask === "confirmed" || activeTask === "dispatch" || isReceiveTask || activeTask === "forwardReverse" || activeTask === "reversed") && (
             <div className="packages-selection-actions" aria-label="Actions for selected packages">
               {selectedRowKeys.length > 0 && <span className="packages-selection-count">{selectedRowKeys.length} selected</span>}
               {isReceiveTask ? (
@@ -2556,10 +2655,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   const totalItems = Number(record.TotalItems ?? record.ItemCount ?? record.ItemsCount ?? record.TotalOrders ?? record._LoadedItems ?? 0);
                   return <article className={`packages-mobile-card ${selected ? "is-selected" : ""}`} key={recordKey}>
                     <div className="packages-mobile-card-head">
-                      <label className="packages-mobile-card-select">
+                      {!isVendorOnly && <label className="packages-mobile-card-select">
                         <input type="checkbox" className="form-check-input" checked={selected} onChange={(event) => setSelectedRowKeys((current) => event.target.checked ? (activeTask === "dispatch" ? [recordKey] : [...new Set([...current, recordKey])]) : current.filter((key) => key !== recordKey))} />
                         <span>Select</span>
-                      </label>
+                      </label>}
                       <span className="packages-mobile-card-status">{isReceiveTask ? `${Number(record._ReceivedItems || 0)}/${totalItems} received` : getDisplayText(record.StatusName || record.TaskManagementStatus)}</span>
                     </div>
                     <button type="button" className="packages-mobile-card-body" onClick={() => {
@@ -2588,7 +2687,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <div className="table-responsive packages-desktop-table">
               <Datatable
                 className="packages-table"
-                rowSelection={{
+                rowSelection={isVendorOnly ? undefined : {
                   selectedRowKeys,
                   onChange: setSelectedRowKeys,
                 }}
@@ -2603,7 +2702,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   title: isReceiveTask ? "Click a batch line item to scan and receive" : "Hover to view package details",
                   style: { cursor: "pointer" },
                 })}
-                columns={isReceiveTask ? inboundBatchColumns : tableColumns}
+                columns={isReceiveTask
+                  ? inboundBatchColumns
+                  : (isVendorOnly ? tableColumns.filter((column) => column.dataIndex !== "action") : tableColumns)}
                 dataSource={isReceiveTask ? inboundBatches : taskOrders}
                 pagination={isReceiveTask ? false : {
                   current: pagination.currentPage,
@@ -2722,7 +2823,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   {batchPanelStage === "complete" && <>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier *</label><SSRSelect instanceId="task-batch-courier" options={courierOptions} value={batchCourier} onChange={setBatchCourier} placeholder="Select courier" isSearchable /></div>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier cost (KES) *</label><input type="number" min="0" step="0.01" className="form-control" value={batchCourierCost} onChange={(event) => setBatchCourierCost(event.target.value)} placeholder="Enter courier cost" /></div>
-                    <div className="mb-3"><label className="form-label fw-semibold">Courier receipt *</label><input type="file" accept="image/*,.pdf" className="form-control" onChange={(event) => setBatchReceipt(event.target.files?.[0] || null)} /></div>
+                    <div className="mb-3"><label className="form-label fw-semibold">Courier receipt *</label><input type="file" accept="image/jpeg,image/png,image/webp" className="form-control" onChange={(event) => setBatchReceipt(event.target.files?.[0] || null)} /></div>
                   </>}
                 </section>}
                 {batchPanelStage === "consolidate" && <section>
@@ -2853,7 +2954,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       {/* Import Excel Modal */}
       <ImportExcelModal
         show={showImportModal}
-        showVendorInput={true}
+        showVendorInput={!isVendorOnly}
         onClose={() => setShowImportModal(false)}
         onUploadSuccess={() => {
           handleRefresh();
@@ -2875,7 +2976,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         <Modal.Body className="p-0">
           <CreatePackageForm
             embedded
-            showVendorInput
+            showVendorInput={!isVendorOnly}
             onClose={() => setShowCreatePackage(false)}
             onComplete={() => {
               setShowCreatePackage(false);
@@ -2886,7 +2987,21 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         </Modal.Body>
       </Modal>
 
+      {isVendorOnly && (
+        <button
+          type="button"
+          className="packages-create-order-fab"
+          onClick={() => setShowCreatePackage(true)}
+          aria-label="Create new order"
+        >
+          <PlusCircle size={20} />
+          Create new Order
+        </button>
+      )}
+
       <style jsx global>{`
+        .packages-create-order-fab { position: fixed; right: 28px; bottom: 28px; z-index: 1040; display: inline-flex; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 13px 20px; background: #ff6200; color: #fff; font-weight: 800; box-shadow: 0 10px 28px rgba(255, 98, 0, .32); }
+        .packages-create-order-fab:hover, .packages-create-order-fab:focus-visible { background: #dd5500; transform: translateY(-1px); outline: none; }
         .delivery-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; text-align: left; }
         .delivery-action-button { min-height: 76px; display: flex; align-items: center; gap: 13px; padding: 15px 17px; border: 1px solid #d9dee7; border-radius: 10px; background: #fff; color: #172b4d; font-size: 15px; font-weight: 700; text-align: left; transition: border-color .15s ease, background .15s ease, transform .15s ease, box-shadow .15s ease; }
         .delivery-action-button:hover, .delivery-action-button:focus-visible { border-color: #ff6200; background: #fff7f2; color: #d94f00; box-shadow: 0 5px 14px rgba(255, 98, 0, .14); transform: translateY(-1px); outline: none; }

@@ -10,10 +10,10 @@ export const DASHBOARD_ROUTES = {
   [RoleType.FINANCE]: "/admin/dashboard", 
   [RoleType.SALES_MANAGER]: "/sales/sales-manager-dashboard",
   [RoleType.SALES_AGENT]: "/sales/sales-agent-dashboard", 
-  [RoleType.DC_OPERATOR]: "/dc/dc-overview",
+  [RoleType.DC_OPERATOR]: "/admin/dashboard",
   [RoleType.RIDER]: "/rider/rd-overview",
-  [RoleType.PACKAGE_HANDLER]: "/dc/dc-overview", 
-  [RoleType.VENDOR]: "/vendor/vendor-overview", 
+  [RoleType.PACKAGE_HANDLER]: "/admin/dashboard",
+  [RoleType.VENDOR]: "/admin/dashboard",
 };
 
 // Dashboard display names for user selection

@@ -16,6 +16,7 @@ import { getVendors } from "@/services/vendorService";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { setSelectedDC } from "@/services/dcService";
 import styles from "./Header.module.css";
+import { RoleType } from "@/constants/user-roles";
 
 const globalFilterSelectStyles = {
   control: (base, state) => ({
@@ -46,7 +47,15 @@ const Header = () => {
   const { user } = useAuth();
   const { filters, setFilter } = useGlobalFilters();
 
-  const isUserAdmin = user?.AssignedRoles?.some(role => role.RoleTypeCode === 'R-001');
+  const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isUserAdmin = roleCodes.has(RoleType.ADMIN);
+  const isVendorOnly = roleCodes.has(RoleType.VENDOR) && !isUserAdmin;
+  const isDCUser = roleCodes.has(RoleType.DC_OPERATOR) || roleCodes.has(RoleType.PACKAGE_HANDLER);
+  const assignedVendorCode = user?.AssignedVendor?.VendorCode
+    || user?.AssignedVendor?.vendorCode
+    || user?.VendorCode
+    || user?.vendorCode
+    || "";
 
   // Dashboard configuration
   const dashboards = [
@@ -125,10 +134,10 @@ const Header = () => {
 
   const currentDashboard = getCurrentDashboard();
   const availableDashboards = getAvailableDashboards();
-  const isAdminView = currentDashboard.id === 'admin' && isUserAdmin;
+  const isAdminView = currentDashboard.id === 'admin' && (isUserAdmin || isDCUser || isVendorOnly);
 
   useEffect(() => {
-    if (!isAdminView) return;
+    if (!isAdminView || isVendorOnly) return;
     const loadGlobalOptions = async () => {
       setLoadingGlobalOptions(true);
       const [vendorResult] = await Promise.allSettled([
@@ -148,24 +157,41 @@ const Header = () => {
       }
     };
     loadGlobalOptions();
-  }, [isAdminView]);
+  }, [isAdminView, isVendorOnly]);
+
+  useEffect(() => {
+    if (!isVendorOnly || !assignedVendorCode) return;
+    if (filters.vendorCode !== assignedVendorCode) setFilter("vendorCode", assignedVendorCode);
+    if (filters.dcCodes || filters.dcCode) setFilter("dcCodes", "");
+  }, [isVendorOnly, assignedVendorCode, filters.vendorCode, filters.dcCode, filters.dcCodes]);
 
   useEffect(() => {
     const assignedDCs = Array.isArray(user?.AssignedDistributionCenter) ? user.AssignedDistributionCenter : [];
     setDistributionCenters(assignedDCs);
-    if (!assignedDCs.length) {
+    if (isVendorOnly || !assignedDCs.length) {
       if (filters.dcCodes || filters.dcCode) setFilter("dcCodes", "");
       return;
     }
     const selectedCodes = String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean);
     const assignedCodes = assignedDCs.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
+    if (selectedCodes.includes("__ALL__")) {
+      if (filters.dcCodes !== "__ALL__") setFilter("dcCodes", "__ALL__");
+      setSelectedDC(assignedCodes[0] || "");
+      return;
+    }
+    if (selectedCodes[0]?.startsWith("__ALL_EXCEPT__:")) {
+      const excluded = new Set(selectedCodes[0].slice("__ALL_EXCEPT__:".length).split("|").filter(Boolean));
+      const included = assignedCodes.filter((code) => !excluded.has(code));
+      setSelectedDC(included[0] || "");
+      return;
+    }
     const validCodes = selectedCodes.filter((code) => assignedCodes.includes(code));
     const defaultDCCode = assignedDCs[0].DCCode || assignedDCs[0].dcCode || "";
     const selectedDCCodes = (validCodes.length ? validCodes : [defaultDCCode]).filter(Boolean);
     const serializedCodes = selectedDCCodes.join(",");
     if (serializedCodes !== filters.dcCodes) setFilter("dcCodes", serializedCodes);
     if (selectedDCCodes[0]) setSelectedDC(selectedDCCodes[0]);
-  }, [user?.AssignedDistributionCenter, filters.dcCode, filters.dcCodes]);
+  }, [user?.AssignedDistributionCenter, filters.dcCode, filters.dcCodes, isVendorOnly]);
 
   const getLogoRoute = () => {
     try {
@@ -421,6 +447,15 @@ const Header = () => {
     }
   };
 
+  const assignedHeaderDCCodes = distributionCenters.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
+  const rawDCFilter = String(filters.dcCodes || filters.dcCode || "");
+  const excludedHeaderDCCodes = rawDCFilter.startsWith("__ALL_EXCEPT__:")
+    ? new Set(rawDCFilter.slice("__ALL_EXCEPT__:".length).split("|").filter(Boolean))
+    : null;
+  const selectedHeaderDCCodes = excludedHeaderDCCodes
+    ? assignedHeaderDCCodes.filter((code) => !excludedHeaderDCCodes.has(code))
+    : rawDCFilter.split(",").filter(Boolean);
+
   return (
     <div className="header">
       {/* Logo */}
@@ -499,7 +534,7 @@ const Header = () => {
             <label className={styles.dateFilter} title="End date">
               <input type="date" value={filters.endDate} min={filters.startDate} onChange={(event) => setFilter("endDate", event.target.value)} aria-label="End date" />
             </label>
-            <SSRSelect
+            {!isVendorOnly && <SSRSelect
               instanceId="header-vendor-filter"
               className={styles.globalFilterSelect}
               aria-label="Vendor"
@@ -519,28 +554,47 @@ const Header = () => {
               isSearchable
               noOptionsMessage={() => "No vendors found"}
               styles={globalFilterSelectStyles}
-            />
-            <SSRSelect
+            />}
+            {!isVendorOnly && <SSRSelect
               instanceId="header-dc-filter"
               className={`${styles.globalFilterSelect} ${styles.globalDCFilterSelect}`}
               aria-label="Distribution center"
-              options={distributionCenters.map((dc) => {
-                const code = dc.DCCode || dc.dcCode;
-                return { value: code, label: dc.DCName || dc.dcName || code };
-              })}
-              value={String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean).map((code) => {
+              options={[
+                { value: "__ALL__", label: "Select all sorting centres" },
+                ...distributionCenters.map((dc) => {
+                  const code = dc.DCCode || dc.dcCode;
+                  return { value: code, label: dc.DCName || dc.dcName || code };
+                }),
+              ]}
+              value={selectedHeaderDCCodes.map((code) => {
+                if (code === "__ALL__") return { value: "__ALL__", label: "All distribution centres" };
                 const dc = distributionCenters.find((item) => (item.DCCode || item.dcCode) === code);
                 return { value: code, label: dc?.DCName || dc?.dcName || code };
               })}
               onChange={(selected) => {
-                const dcCodes = (selected || []).map((option) => option.value).join(",");
+                const selectedOptions = selected || [];
+                const selectAll = selectedOptions.some((option) => option.value === "__ALL__");
+                const selectedCodes = selectAll
+                  ? ["__ALL__"]
+                  : selectedOptions.map((option) => option.value).filter((value) => value !== "__ALL__");
+                const assignedCodes = distributionCenters.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
+                const selectedSet = new Set(selectedCodes);
+                const excludedCodes = assignedCodes.filter((code) => !selectedSet.has(code));
+                const dcCodes = selectAll
+                  ? "__ALL__"
+                  : selectedCodes.length > assignedCodes.length / 2
+                    ? `__ALL_EXCEPT__:${excludedCodes.join("|")}`
+                    : selectedCodes.join(",");
                 setFilter("dcCodes", dcCodes);
-                if (selected?.[0]?.value) setSelectedDC(selected[0].value);
+                if (selectAll) setSelectedDC(assignedCodes[0] || "");
+                else if (selectedCodes[0]) setSelectedDC(selectedCodes[0]);
               }}
-              placeholder={String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean).length > 1
-                ? `${String(filters.dcCodes || filters.dcCode).split(",").filter(Boolean).length} DCs selected`
+              placeholder={rawDCFilter === "__ALL__"
+                ? "All distribution centres"
+                : selectedHeaderDCCodes.length > 1
+                ? `${selectedHeaderDCCodes.length} DCs selected`
                 : "Select distribution centers"}
-              controlShouldRenderValue={String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean).length <= 1}
+              controlShouldRenderValue={selectedHeaderDCCodes.length <= 1}
               isDisabled={loadingGlobalOptions}
               isLoading={loadingGlobalOptions}
               isMulti
@@ -550,7 +604,7 @@ const Header = () => {
               isSearchable
               noOptionsMessage={() => "No distribution centers found"}
               styles={globalFilterSelectStyles}
-            />
+            />}
           </li>
         )}
         {/* Search */}
