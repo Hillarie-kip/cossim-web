@@ -7,6 +7,25 @@ import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
 import notify from '@/lib/toast';
 
+const makeStickerPrintSafe = (clonedDocument) => {
+  const sticker = clonedDocument.querySelector('[data-package-sticker]') || clonedDocument.body.firstElementChild?.firstElementChild;
+  if (!sticker) return;
+  sticker.style.backgroundColor = '#FFFFFF';
+  sticker.style.borderColor = '#000000';
+  sticker.querySelectorAll('*').forEach((element) => {
+    const computed = clonedDocument.defaultView.getComputedStyle(element);
+    const background = computed.backgroundColor;
+    const color = computed.color;
+    if (background === 'rgb(242, 106, 38)') element.style.backgroundColor = '#000000';
+    if (background === 'rgb(255, 249, 246)') element.style.backgroundColor = '#FFFFFF';
+    if (['rgb(242, 106, 38)', 'rgb(51, 51, 51)', 'rgb(85, 85, 85)', 'rgb(102, 102, 102)', 'rgb(153, 153, 153)'].includes(color)) element.style.color = '#000000';
+    if (computed.borderTopStyle !== 'none') element.style.borderTopColor = '#000000';
+    if (computed.borderRightStyle !== 'none') element.style.borderRightColor = '#000000';
+    if (computed.borderBottomStyle !== 'none') element.style.borderBottomColor = '#000000';
+    if (computed.borderLeftStyle !== 'none') element.style.borderLeftColor = '#000000';
+  });
+};
+
 const useStickerDownload = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const stickerRef = useRef(null);
@@ -151,7 +170,7 @@ const useStickerDownload = () => {
       // Wait a bit for rendering
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const stickerElement = tempContainer.querySelector('div');
+      const stickerElement = tempContainer.querySelector('[data-package-sticker]') || tempContainer.firstElementChild;
 
       if (!stickerElement) {
         throw new Error('Sticker element not found');
@@ -159,10 +178,11 @@ const useStickerDownload = () => {
 
       // Generate canvas from HTML
       const canvas = await html2canvas(stickerElement, {
-        backgroundColor: '#E8C5B3',
+        backgroundColor: '#FFFFFF',
         scale: 4, // Higher quality for printing
         useCORS: true,
         allowTaint: true,
+        onclone: makeStickerPrintSafe,
         width: sizeConfigs[size].displayWidth,
         height: sizeConfigs[size].displayHeight
       });
@@ -172,14 +192,16 @@ const useStickerDownload = () => {
       document.body.removeChild(tempContainer);
 
       // Create PDF from canvas
+      const pageWidth = sizeConfigs[size].width * 72;
+      const pageHeight = sizeConfigs[size].height * 72;
       const pdf = new jsPDF({
         orientation: 'portrait',
-        unit: 'in',
-        format: [sizeConfigs[size].width, sizeConfigs[size].height]
+        unit: 'pt',
+        format: [pageWidth, pageHeight]
       });
 
       const imgData = canvas.toDataURL('image/png', 1.0);
-      pdf.addImage(imgData, 'PNG', 0, 0, sizeConfigs[size].width, sizeConfigs[size].height);
+      pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
 
       // Generate PDF blob
       const pdfBlob = pdf.output('blob');
@@ -192,7 +214,6 @@ const useStickerDownload = () => {
       if (printWindow) {
         printWindow.onload = () => {
           printWindow.print();
-          // Optionally close the window after printing
           printWindow.onafterprint = () => {
             printWindow.close();
             URL.revokeObjectURL(pdfUrl);
@@ -308,10 +329,12 @@ const useStickerDownload = () => {
       const ReactDOM = (await import('react-dom/client')).default;
       const PackageSticker = (await import('@/components/PackageSticker')).default;
 
+      const pageWidth = sizeConfigs[size].width * 72;
+      const pageHeight = sizeConfigs[size].height * 72;
       const pdf = new jsPDF({
         orientation: 'portrait',
-        unit: 'in',
-        format: [sizeConfigs[size].width, sizeConfigs[size].height]
+        unit: 'pt',
+        format: [pageWidth, pageHeight]
       });
 
       for (let i = 0; i < packagesData.length; i++) {
@@ -341,14 +364,15 @@ const useStickerDownload = () => {
 
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const stickerElement = tempContainer.querySelector('div');
+        const stickerElement = tempContainer.querySelector('[data-package-sticker]') || tempContainer.firstElementChild;
         if (!stickerElement) throw new Error('Sticker element not found');
 
         const canvas = await html2canvas(stickerElement, {
-          backgroundColor: '#E8C5B3',
+          backgroundColor: '#FFFFFF',
           scale: 4,
           useCORS: true,
           allowTaint: true,
+          onclone: makeStickerPrintSafe,
           width: sizeConfigs[size].displayWidth,
           height: sizeConfigs[size].displayHeight
         });
@@ -357,11 +381,11 @@ const useStickerDownload = () => {
         document.body.removeChild(tempContainer);
 
         if (i > 0) {
-          pdf.addPage([sizeConfigs[size].width, sizeConfigs[size].height], 'portrait');
+          pdf.addPage([pageWidth, pageHeight], 'portrait');
         }
 
         const imgData = canvas.toDataURL('image/png', 1.0);
-        pdf.addImage(imgData, 'PNG', 0, 0, sizeConfigs[size].width, sizeConfigs[size].height);
+        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
       }
 
       const pdfBlob = pdf.output('blob');

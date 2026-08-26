@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Box, CheckCircle2, Clock3, PackageCheck, RotateCcw, Search, Ship, Truck, X } from "lucide-react";
+import { Box, CheckCircle2, Clock3, PackageCheck, RotateCcw, Search, Ship, Truck } from "lucide-react";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import useShipment from "@/hooks/useShipment";
 import Link from "@/components/Link";
@@ -10,22 +10,23 @@ import { readAnalyticsArray, readAnalyticsValue } from "@/utils/analyticsReportU
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useAuth } from "@/contexts/AuthContext";
 import styles from "./dashboard.module.scss";
-import PackagesList from "@/app/admin/(operations)/packages/page";
 import { RoleType } from "@/constants/user-roles";
 
 const fallbackStatuses = [["Delivered",120,59.4],["In Transit",34,16.8],["Processing",28,13.9],["Returned",20,9.9]].map(([StatusName,OrderCount,PercentageOfOrders])=>({StatusName,OrderCount,PercentageOfOrders}));
 const fallbackAging = [["0–1 day",84],["2–3 days",61],["4–7 days",39],["8–14 days",13],["15+ days",5]].map(([AgingBucket,OrderCount])=>({AgingBucket,OrderCount}));
 const orderStatusStages = [
-  { StatusName: "Order Confirmed", PhaseCode: "VENDOR", aliases: ["ORDER CONFIRMED", "CONFIRMED BY VENDOR", "VENDOR CREATED"] },
-  { StatusName: "HQ Hub", PhaseCode: "HQ HUB", aliases: ["HQ HUB", "PICKED BY COURIER", "ORDER PICKED BY COURIER", "HANDED TO DC CARRIER"] },
-  { StatusName: "Received at DC", PhaseCode: "DC", aliases: ["RECEIVED AT DC", "ARRIVED AT DC", "RECEIVED INTO DC"] },
-  { StatusName: "1st Attempt", PhaseCode: "DELIVERY", aliases: ["1ST ATTEMPT", "FIRST ATTEMPT", "DELIVERY ATTEMPTED"] },
-  { StatusName: "2nd Attempt", PhaseCode: "DELIVERY", aliases: ["2ND ATTEMPT", "SECOND ATTEMPT"] },
-  { StatusName: "3rd Attempt", PhaseCode: "DELIVERY", aliases: ["3RD ATTEMPT", "THIRD ATTEMPT"] },
-  { StatusName: "Return Leg", PhaseCode: "RETURN", aliases: ["RETURN LEG", "RETURN IN TRANSIT", "RETURNED TO VENDOR", "RETURN REQUESTED"] },
-  { StatusName: "Completed", PhaseCode: "CLOSED", aliases: ["COMPLETED", "DELIVERED", "CLOSED SUCCESS", "ACCEPTED", "PICKED UP BY CUSTOMER"] },
+  { StatusName: "Order Confirmed", PhaseCode: "VENDOR", target: "/admin/packages?task=confirmed&taskModule=forward&from=dashboard", aliases: ["ORDER CONFIRMED", "CONFIRMED BY VENDOR", "VENDOR CREATED"] },
+  { StatusName: "HQ Hub", PhaseCode: "HQ HUB", target: "/admin/packages?task=dispatch&taskModule=forward&from=dashboard", aliases: ["HQ HUB", "PICKED BY COURIER", "ORDER PICKED BY COURIER", "HANDED TO DC CARRIER"] },
+  { StatusName: "Received at DC", PhaseCode: "DC", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["RECEIVED AT DC", "ARRIVED AT DC", "RECEIVED INTO DC"] },
+  { StatusName: "1st Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["1ST ATTEMPT", "FIRST ATTEMPT", "DELIVERY ATTEMPTED"] },
+  { StatusName: "2nd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["2ND ATTEMPT", "SECOND ATTEMPT"] },
+  { StatusName: "3rd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["3RD ATTEMPT", "THIRD ATTEMPT"] },
+  { StatusName: "Returned Orders", PhaseCode: "RETURN", target: "/admin/packages?task=reversed&taskModule=reverse&from=dashboard", aliases: ["RETURN LEG", "RETURN IN TRANSIT", "RETURNED TO VENDOR", "RETURN REQUESTED"] },
+  { StatusName: "Completed", PhaseCode: "CLOSED", target: "/admin/reports/completed-orders", aliases: ["COMPLETED", "DELIVERED", "CLOSED SUCCESS", "ACCEPTED", "PICKED UP BY CUSTOMER"] },
 ];
 const number = value => Number(value||0).toLocaleString("en-KE");
+const money = value => Number(value||0).toLocaleString("en-KE",{minimumFractionDigits:2,maximumFractionDigits:2});
+const percentage = (part,total) => Number(total)>0?Number(part||0)/Number(total)*100:0;
 const normalizeStatus = value => String(value||"").replaceAll("_"," ").replace(/[()]/g," ").replace(/\s+/g," ").trim().toUpperCase();
 const shipmentStatusCopy = {
   ORDER_CONFIRMED:["Order confirmed","The vendor has confirmed the order and it is awaiting courier collection.","Next: Courier picks up the shipment."],
@@ -57,12 +58,10 @@ export default function DashboardPage(){
   const [searchResult,setSearchResult]=useState(null);
   const [searchLoading,setSearchLoading]=useState(false);
   const [searchError,setSearchError]=useState("");
-  const [selectedStatus,setSelectedStatus]=useState(null);
   useEffect(()=>{clearShipmentOrderAnalytics();if(!isVendorOnly&&!activeDCCodes)return;fetchShipmentOrderAnalytics({startDate:`${filters.startDate}T00:00:00`,endDate:`${filters.endDate}T23:59:59`,vendorCode:filters.vendorCode||undefined,originDCCode:activeDCCodes||undefined,destinationDCCode:activeDCCodes||undefined}).catch(()=>{});},[fetchShipmentOrderAnalytics,filters.startDate,filters.endDate,filters.vendorCode,activeDCCodes,isVendorOnly]);
   const scopedAnalytics=(isVendorOnly||activeDCCodes)?shipmentOrderAnalytics:null;
   const summary=readAnalyticsValue(scopedAnalytics,"Summary",{});
   const statuses=readAnalyticsArray(scopedAnalytics,"StatusAnalytics");
-  const risks=readAnalyticsArray(scopedAnalytics,"CurrentSLARisk");
   const statusRows=scopedAnalytics?statuses:[];
   const total=Number(readAnalyticsValue(summary,"TotalOrders",statusRows.reduce((sum,row)=>sum+Number(readAnalyticsValue(row,"OrderCount",0)),0)));
   const orderedStatusRows=useMemo(()=>orderStatusStages.map(stage=>{
@@ -72,11 +71,6 @@ export default function DashboardPage(){
     },0);
     return {...stage,OrderCount:count,PercentageOfOrders:total?count/total*100:0};
   }),[statusRows,total]);
-  const tasks=useMemo(()=>{
-    const groups={dispatch:[],receive:[],return:[]};
-    risks.forEach(row=>{const name=String(readAnalyticsValue(row,"StatusName","")).toLowerCase();if(name.includes("return")||name.includes("failed"))groups.return.push(row);else if(name.includes("transit")||name.includes("receive")||name.includes("arriv"))groups.receive.push(row);else groups.dispatch.push(row)});
-    return groups;
-  },[risks]);
   const orderSummaryCards=[
     ["Received from vendor",number(readAnalyticsValue(summary,"TotalOrders",0)),"Selected period",Box],
     ["In transit",number(readAnalyticsValue(summary,"ActiveOrders",0)),"Currently in progress",Clock3],
@@ -89,10 +83,16 @@ export default function DashboardPage(){
     ["Average order value",`KES ${number(total?Number(readAnalyticsValue(summary,"TotalShipmentFees",0))/total:0)}`,"Per shipment",Ship],
     ["SLA compliance",`${Number(readAnalyticsValue(readAnalyticsValue(scopedAnalytics,"SLASummary",{}),"SLACompliancePercentage",0)).toFixed(1)}%`,"Measured events",CheckCircle2],
   ];
-  const taskGroups=[
-    ["Orders to dispatch","dispatch",Truck,"Ready for rider assignment"],
-    ["Orders to receive","receive",PackageCheck,"Arriving at distribution center"],
-    ["Orders to return","return",RotateCcw,"Requires return action"],
+  const orderAmount=Number(readAnalyticsValue(summary,"OrderAmount",readAnalyticsValue(summary,"CashOnDeliveryAmount",0)));
+  const paidAmount=Number(readAnalyticsValue(summary,"PaidAmount",0));
+  const returnedOrders=Number(readAnalyticsValue(summary,"ReturnOrders",0));
+  const acceptedReturns=Number(readAnalyticsValue(summary,"AcceptedOrders",0));
+  const slaCompliantOrders=Number(readAnalyticsValue(summary,"SLACompliantOrders",0));
+  const slaCompliance=Number(readAnalyticsValue(summary,"SLACompliancePercentage",percentage(slaCompliantOrders,total)));
+  const performanceCards=[
+    ["Orders amount vs paid",`KES ${money(orderAmount)} / KES ${money(paidAmount)}`,`${percentage(paidAmount,orderAmount).toFixed(1)}% paid`,Box,"/admin/reports/completed-orders"],
+    ["Orders returned vs accepted",`${number(returnedOrders)} / ${number(acceptedReturns)}`,`${percentage(acceptedReturns,returnedOrders).toFixed(1)}% accepted`,RotateCcw,"/admin/reports/all-returns"],
+    ["SLA compliant",`${slaCompliance.toFixed(1)}%`,`${number(slaCompliantOrders)} of ${number(total)} orders fulfilled within SLA`,CheckCircle2,"/admin/reports/shipment-sla"],
   ];
   const handleShipmentSearch=async event=>{
     event.preventDefault();
@@ -119,10 +119,9 @@ export default function DashboardPage(){
         <section className={styles.summaryPanel}><div className={styles.panelHeader}><div><small>PERFORMANCE SNAPSHOT</small><h2>Order summary</h2></div></div><div className={styles.metricGrid}>{orderSummaryCards.map(([label,value,helper,Icon])=><Metric key={label} label={label} value={value} helper={helper} Icon={Icon}/>)}</div></section>
         <section className={`${styles.summaryPanel} ${styles.financialPanel}`}><div className={styles.panelHeader}><div><small>FINANCIAL PERFORMANCE</small><h2>Financial summary</h2></div></div><div className={styles.metricGrid}>{financialSummaryCards.map(([label,value,helper,Icon])=><Metric key={label} label={label} value={value} helper={helper} Icon={Icon}/>)}</div></section>
       </section>
-      <aside className={styles.actionPanel}><div className={styles.panelHeader}><div><small>OPERATIONS DESK</small><h1>Shipment actions</h1></div>{orderLoading&&<span className={styles.loading}>Updating…</span>}</div><div className={styles.actionContent}><div className={styles.searchTab}><div className={styles.actionSectionTitle}><Search size={15}/><strong>Search shipment</strong></div><label>Shipment number</label><form className={styles.shipmentSearchForm} onSubmit={handleShipmentSearch}><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="e.g. PCK-ZJC3KF0A-8HNH4NH"/><button className={styles.searchButton} type="submit" disabled={searchLoading}>{searchLoading?"Searching…":"Search"}</button></form>{searchResult?<div className={styles.shipmentSearchResult}><div className={styles.resultIcon}><CheckCircle2 size={21}/></div><div className={styles.resultContent}><small>Current shipment status</small><h3>{searchedStatus[0]}</h3><p>{searchedStatus[1]}</p><strong>{searchedStatus[2]}</strong></div><div className={styles.resultMeta}>{searchedUpdatedAt&&<span>Last updated<br/><b>{new Date(searchedUpdatedAt).toLocaleString("en-GB")}</b></span>}<Link to={`/admin/packages/${encodeURIComponent(searchedOrderNO)}/track?trackingNumber=${encodeURIComponent(searchedOrderNO)}&from=dashboard`}>View more</Link></div></div>:<div className={styles.searchHint}>{searchError?<><Search size={30}/><h3>Shipment not found</h3><p>{searchError}</p></>:<><Search size={30}/><h3>Find a shipment</h3><p>Enter a shipment number to see its current status.</p></>}</div>}</div><div><div className={styles.actionSectionTitle}><PackageCheck size={15}/><strong>Current tasks</strong></div><div className={styles.taskList}>{taskGroups.map(([label,key,Icon,helper])=><button key={key} onClick={()=>router.push(`/admin/packages?task=${key}&from=dashboard`)}><span><Icon size={20}/></span><div><strong>{label}</strong><small>{helper}</small></div><b>{tasks[key].length}</b></button>)}{orderError&&<p className={styles.error}>{orderError}</p>}</div></div></div>
+      <aside className={styles.actionPanel}><div className={styles.panelHeader}><div><small>OPERATIONS DESK</small><h1>Shipment actions</h1></div>{orderLoading&&<span className={styles.loading}>Updating…</span>}</div><div className={styles.actionContent}><div className={styles.searchTab}><div className={styles.actionSectionTitle}><Search size={15}/><strong>Search shipment</strong></div><label>Shipment number</label><form className={styles.shipmentSearchForm} onSubmit={handleShipmentSearch}><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="e.g. PCK-ZJC3KF0A-8HNH4NH"/><button className={styles.searchButton} type="submit" disabled={searchLoading}>{searchLoading?"Searching…":"Search"}</button></form>{searchResult?<div className={styles.shipmentSearchResult}><div className={styles.resultIcon}><CheckCircle2 size={21}/></div><div className={styles.resultContent}><small>Current shipment status</small><h3>{searchedStatus[0]}</h3><p>{searchedStatus[1]}</p><strong>{searchedStatus[2]}</strong></div><div className={styles.resultMeta}>{searchedUpdatedAt&&<span>Last updated<br/><b>{new Date(searchedUpdatedAt).toLocaleString("en-GB")}</b></span>}<Link to={`/admin/packages/${encodeURIComponent(searchedOrderNO)}/track?trackingNumber=${encodeURIComponent(searchedOrderNO)}&from=dashboard`}>View more</Link></div></div>:<div className={styles.searchHint}>{searchError?<><Search size={30}/><h3>Shipment not found</h3><p>{searchError}</p></>:<><Search size={30}/><h3>Find a shipment</h3><p>Enter a shipment number to see its current status.</p></>}</div>}</div><div><div className={styles.actionSectionTitle}><PackageCheck size={15}/><strong>Current performance</strong></div><div className={styles.taskList}>{performanceCards.map(([label,value,helper,Icon,target])=><button key={label} onClick={()=>router.push(target)}><span><Icon size={20}/></span><div><strong>{label}</strong><small>{helper}</small></div><b className={styles.comparisonValue}>{value}</b></button>)}{orderError&&<p className={styles.error}>{orderError}</p>}</div></div></div>
       </aside>
-      <section className={styles.statusPanel}><div className={styles.sectionHeading}><div><small>LIVE OVERVIEW</small><h2>ORDER STATUS</h2></div><span>{number(total)} ORDERS</span></div><div className={styles.statusGrid}>{orderedStatusRows.map((row,index)=>{const count=Number(row.OrderCount);const percent=Number(row.PercentageOfOrders);return <button type="button" className={styles.statusItem} onClick={()=>setSelectedStatus(row.StatusName)} key={row.StatusName}><span className={styles.stepNumber}>{index+1}</span><div><span><strong>{row.StatusName.toUpperCase()}</strong><small>{row.PhaseCode}</small></span><b>{number(count)}</b></div><div className={styles.statusProgress}><i style={{width:`${Math.min(percent,100)}%`}}/></div><small>{percent.toFixed(1)}% ACHIEVED</small></button>})}</div></section>
+      <section className={styles.statusPanel}><div className={styles.sectionHeading}><div><small>LIVE OVERVIEW</small><h2>ORDER STATUS</h2></div><span>{number(total)} ORDERS</span></div><div className={styles.statusGrid}>{orderedStatusRows.map((row,index)=>{const count=Number(row.OrderCount);const percent=Number(row.PercentageOfOrders);return <button type="button" className={styles.statusItem} onClick={()=>router.push(row.target)} key={row.StatusName}><span className={styles.stepNumber}>{index+1}</span><div><span><strong>{row.StatusName.toUpperCase()}</strong><small>{row.PhaseCode}</small></span><b>{number(count)}</b></div><div className={styles.statusProgress}><i style={{width:`${Math.min(percent,100)}%`}}/></div><small>{percent.toFixed(1)}% ACHIEVED</small></button>})}</div></section>
     </div>
-    <div className={`${styles.modalBackdrop} ${!selectedStatus?styles.hidden:""}`} onMouseDown={event=>{if(event.target===event.currentTarget)setSelectedStatus(null)}} aria-hidden={!selectedStatus}><section className={`${styles.modal} ${styles.packagesModal}`} role="dialog" aria-modal={Boolean(selectedStatus)}><header><div><small>ORDER STATUS</small><h2>{selectedStatus} packages</h2></div><button onClick={()=>setSelectedStatus(null)} aria-label="Close packages dialog"><X/></button></header><div className={styles.packagesModalBody}>{selectedStatus&&<PackagesList key={selectedStatus} initialStatusName={selectedStatus}/>}</div></section></div>
   </div></main>;
 }

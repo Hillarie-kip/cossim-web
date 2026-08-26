@@ -58,3 +58,37 @@
 @media(max-width:720px){.financialPanel .metricGrid{grid-template-columns:1fr}.financialPanel .metric{border-right:0;border-bottom:1px solid #ff6200}.financialPanel .metric:last-child{border-bottom:0}}
 .statusGrid button.statusItem{display:block;width:100%;color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}.statusGrid button.statusItem:hover{transform:translateY(-3px);border-color:#ff9a58;box-shadow:0 7px 16px #ff62001c}.statusGrid button.statusItem:focus-visible{outline:2px solid #ff6200;outline-offset:3px}.packagesModal{width:min(1560px,98vw);height:min(900px,94vh);max-height:94vh}.packagesModalBody{height:calc(100% - 72px);overflow:auto;background:#fff}.packagesModalBody :global(.content){padding:18px!important;min-height:0}
 .shipmentSearchForm button{border:0}.shipmentSearchForm button:disabled{cursor:wait;opacity:.7}.shipmentSearchResult{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:12px;align-items:center;margin-top:16px;padding:18px;border:1px solid #84adff;border-left:4px solid #2e90fa;border-radius:8px;background:#eff8ff}.resultIcon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#2e90fa;color:#fff}.resultContent small{display:block;color:#475467;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}.resultContent h3{margin:3px 0;color:#101828;font-size:15px}.resultContent p{margin:0 0 6px;color:#475467;font-size:11px;line-height:16px}.resultContent strong{color:#101828;font-size:10px}.resultMeta{text-align:right;align-self:stretch;display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;gap:12px}.resultMeta span{color:#667085;font-size:9px}.resultMeta b{color:#101828;font-size:10px}.resultMeta a{border:1px solid #2e90fa;border-radius:5px;padding:6px 10px;color:#175cd3;font-size:10px;font-weight:800;white-space:nowrap}.resultMeta a:hover{background:#2e90fa;color:#fff}@media(max-width:720px){.shipmentSearchResult{grid-template-columns:42px 1fr}.resultMeta{grid-column:1/-1;align-items:flex-start;text-align:left;flex-direction:row}}
+
+/* Current performance cards */
+.actionContent .taskList>button{
+  grid-template-columns:38px minmax(0,1fr) minmax(125px,auto);
+  min-height:72px;
+  padding:12px 14px;
+  gap:12px;
+}
+.actionContent .taskList>button>div{min-width:0}
+.actionContent .taskList>button strong{font-size:11px;line-height:15px}
+.actionContent .taskList>button small{font-size:9px;line-height:13px}
+.actionContent .taskList .comparisonValue{
+  justify-self:end;
+  color:#101828;
+  font-size:13px;
+  line-height:18px;
+  font-weight:800;
+  text-align:right;
+  white-space:nowrap;
+}
+.actionContent .taskList .error{
+  margin:2px 0 0;
+  padding:9px 11px;
+  border:1px solid #fecdca;
+  border-radius:6px;
+  background:#fef3f2;
+  color:#b42318;
+  font-size:10px;
+  line-height:15px;
+}
+@media(max-width:560px){
+  .actionContent .taskList>button{grid-template-columns:38px minmax(0,1fr)}
+  .actionContent .taskList .comparisonValue{grid-column:2;justify-self:start;text-align:left}
+}

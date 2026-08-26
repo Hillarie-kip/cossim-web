@@ -88,6 +88,8 @@ const apiRoutes = {
     getPaymentReviewQueue: `${API_BASE}/api/Finance/GetPaymentReviewQueue`,
     resolvePaymentReviews: `${API_BASE}/api/Finance/ResolvePaymentReviews`,
     getReconciliationWorkspace: `${API_BASE}/api/Finance/GetReconciliationWorkspace`,
+    getReconciliationBatches: `${API_BASE}/api/Finance/GetReconciliationBatches`,
+    getReconciliationTransactions: `${API_BASE}/api/Finance/GetReconciliationTransactions`,
     searchPaybillReceipts: `${API_BASE}/api/Finance/SearchPaybillReceipts`,
     matchOrderReceipts: `${API_BASE}/api/Finance/MatchOrderReceipts`,
     rejectReconciliationOrder: `${API_BASE}/api/Finance/RejectReconciliationOrder`,

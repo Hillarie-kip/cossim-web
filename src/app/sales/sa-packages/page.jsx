@@ -169,6 +169,7 @@ const PackagesList = () => {
   const handleDownloadSticker = (record) => {
     // Convert the record to match PackageSticker expected format
     const packageData = {
+      ...record,
       OrderNO: record.OrderNO,
       CustomerName: record.CustomerName,
       CustomerPhone: record.CustomerPhone,
@@ -190,6 +191,7 @@ const PackagesList = () => {
     const selectedPackages = shipmentOrders.filter(order => 
       selectedRowKeys.includes(order.OrderNO)
     ).map(record => ({
+      ...record,
       OrderNO: record.OrderNO,
       CustomerName: record.CustomerName,
       CustomerPhone: record.CustomerPhone,

@@ -23,6 +23,21 @@ export const getReconciliationWorkspace = async (search = '') => {
     return response.data;
 };
 
+export const getReconciliationBatches = async () => {
+    const response = await api.get(apiRoutes.finance.getReconciliationBatches);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load reconciliation batches');
+    return response.data;
+};
+
+export const getReconciliationTransactions = async ({ batchID, usage = 'all', search = '' } = {}) => {
+    const query = new URLSearchParams({ usage });
+    if (batchID) query.set('batchID', batchID);
+    if (search) query.set('search', search);
+    const response = await api.get(`${apiRoutes.finance.getReconciliationTransactions}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load statement transactions');
+    return response.data;
+};
+
 export const searchPaybillReceipts = async ({ search = '', orderNO }) => {
     const query = new URLSearchParams({ orderNO }); if (search) query.set('search', search);
     const response = await api.get(`${apiRoutes.finance.searchPaybillReceipts}?${query}`);

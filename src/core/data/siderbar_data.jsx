@@ -71,7 +71,7 @@ export const SidebarData = [
         submenu: true,
         description: "Delivered and completed orders",
         submenuItems: [
-          { label: "Received Orders", icon: <Icon.Inbox />, link: "/admin/reports/vendor-received-orders", submenu: false },
+          { label: "All Orders", icon: <Icon.Inbox />, link: "/admin/reports/vendor-received-orders", submenu: false },
           { label: "Delivered Orders", icon: <Icon.CheckCircle />, link: "/admin/reports/delivered-orders", submenu: false },
           { label: "Completed Orders", icon: <Icon.CheckSquare />, link: "/admin/reports/completed-orders", submenu: false },
         ],
@@ -79,11 +79,12 @@ export const SidebarData = [
       {
         label: "Returns",
         icon: <Icon.RotateCcw />,
-        link: "/admin/reports/accepted-returns",
+        link: "/admin/reports/all-returns",
         showSubRoute: true,
         submenu: true,
         description: "Accepted and declined returns",
         submenuItems: [
+          { label: "All Returns", icon: <Icon.RotateCcw />, link: "/admin/reports/all-returns", submenu: false },
           { label: "Accepted Returns", icon: <Icon.CheckCircle />, link: "/admin/reports/accepted-returns", submenu: false },
           { label: "Declined Returns", icon: <Icon.XCircle />, link: "/admin/reports/declined-returns", submenu: false },
         ],
@@ -114,10 +115,10 @@ export const SidebarData = [
       {
         label: "Reconciliation",
         icon: <Icon.FileText />,
-        link: "/admin/reconciliation",
+        link: "/admin/payment-reconciliation",
         showSubRoute: false,
         submenu: false,
-        description: "Order Reconciliation",
+        description: "COD Payment Reconciliation",
       },
       {
         label: "Settlements",
@@ -286,6 +287,14 @@ export const distribution_center_manager_sidebar_data = [
   {
     label: "REPORTS",
     submenuItems: [
+      {
+        label: "All Returns",
+        icon: <Icon.RotateCcw />,
+        link: "/dc/reports/all-returns",
+        showSubRoute: false,
+        submenu: false,
+        description: "Accept or decline returned orders",
+      },
       {
         label: "Tracking Analytics",
         icon: <Icon.Activity />,
@@ -573,6 +582,14 @@ export const vendor_dashboard_sidebar_data = [
   {
     label: "REPORTS",
     submenuItems: [
+      {
+        label: "All Returns",
+        icon: <Icon.RotateCcw />,
+        link: "/vendor/reports/all-returns",
+        showSubRoute: false,
+        submenu: false,
+        description: "Accept returned orders",
+      },
       {
         label: "Tracking Analytics",
         icon: <Icon.Activity />,

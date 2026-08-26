@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "@/components/Link";
 import NextLink from "next/link";
 import FeatherIcon from "feather-icons-react";
@@ -27,6 +27,50 @@ const DCSelectOption = (props) => (
   </selectComponents.Option>
 );
 
+const filterDCOption = ({ data }, inputValue) => {
+  const query = String(inputValue || "").trim().toLocaleLowerCase();
+  if (!query) return true;
+  return [data.label, data.value, data.region]
+    .some((field) => String(field || "").toLocaleLowerCase().includes(query));
+};
+
+const toDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getPresetDateRange = (preset) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  const end = new Date(today);
+  if (preset === "yesterday") start.setDate(start.getDate() - 1), end.setDate(end.getDate() - 1);
+  if (preset === "last7") start.setDate(start.getDate() - 6);
+  if (preset === "thisWeek") start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  if (preset === "lastWeek") {
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - 7);
+    end.setTime(start.getTime());
+    end.setDate(end.getDate() + 6);
+  }
+  if (preset === "thisMonth") start.setDate(1);
+  if (preset === "lastMonth") {
+    start.setMonth(start.getMonth() - 1, 1);
+    end.setDate(0);
+  }
+  if (preset === "last3Months") start.setMonth(start.getMonth() - 3);
+  if (preset === "thisYear") start.setMonth(0, 1);
+  return { startDate: toDateInputValue(start), endDate: toDateInputValue(end) };
+};
+
+const DATE_PRESETS = [
+  ["today", "Today"], ["yesterday", "Yesterday"], ["last7", "Last 7 Days"],
+  ["thisWeek", "This Week"], ["lastWeek", "Last Week"],
+  ["thisMonth", "This Month"], ["lastMonth", "Last Month"],
+  ["last3Months", "Last 3 Months"], ["thisYear", "This Year"],
+];
+
 const globalFilterSelectStyles = {
   control: (base, state) => ({
     ...base,
@@ -52,9 +96,30 @@ const Header = () => {
   const [vendors, setVendors] = useState([]);
   const [distributionCenters, setDistributionCenters] = useState([]);
   const [loadingGlobalOptions, setLoadingGlobalOptions] = useState(false);
+  const [dateRangeOpen, setDateRangeOpen] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const dateRangeRef = useRef(null);
   const location = useLocation();
   const { user } = useAuth();
-  const { filters, setFilter } = useGlobalFilters();
+  const { filters, setFilter, setFilters } = useGlobalFilters();
+
+  useEffect(() => {
+    if (!dateRangeOpen) return;
+    setCustomStartDate(filters.startDate);
+    setCustomEndDate(filters.endDate);
+    const closeOnOutsideClick = (event) => {
+      if (!dateRangeRef.current?.contains(event.target)) setDateRangeOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [dateRangeOpen, filters.startDate, filters.endDate]);
+
+  const applyDateRange = ({ startDate, endDate }) => {
+    if (!startDate || !endDate || startDate > endDate) return;
+    setFilters((current) => ({ ...current, startDate, endDate }));
+    setDateRangeOpen(false);
+  };
 
   const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
   const isUserAdmin = roleCodes.has(RoleType.ADMIN);
@@ -475,9 +540,9 @@ const Header = () => {
   const dcOptionsByRegion = Object.values(distributionCenters.reduce((groups, dc) => {
     const code = dc.DCCode || dc.dcCode;
     if (!code) return groups;
-    const region = dc.Region || dc.region || "Other / Unassigned region";
+    const region = dc.Region || dc.region || dc.RegionName || dc.regionName || "Other / Unassigned region";
     if (!groups[region]) groups[region] = { label: region, options: [] };
-    groups[region].options.push({ value: code, label: dc.DCName || dc.dcName || code });
+    groups[region].options.push({ value: code, label: dc.DCName || dc.dcName || code, region });
     return groups;
   }, {})).sort((a, b) => a.label.localeCompare(b.label));
   const saveDCSelection = (codes) => {
@@ -557,14 +622,26 @@ const Header = () => {
       <ul className="nav user-menu">
         {isAdminView && (
           <li className={`nav-item d-none d-lg-flex ${styles.globalFilters}`}>
-            <label className={styles.dateFilter} title="Start date">
-              <FeatherIcon icon="calendar" />
-              <input type="date" value={filters.startDate} max={filters.endDate} onChange={(event) => setFilter("startDate", event.target.value)} aria-label="Start date" />
-            </label>
-            <span className={styles.dateSeparator}>to</span>
-            <label className={styles.dateFilter} title="End date">
-              <input type="date" value={filters.endDate} min={filters.startDate} onChange={(event) => setFilter("endDate", event.target.value)} aria-label="End date" />
-            </label>
+            <div className={styles.dateRangePicker} ref={dateRangeRef}>
+              <label className={styles.dateFilter} title="Start date" onClick={() => setDateRangeOpen(true)}>
+                <FeatherIcon icon="calendar" />
+                <input type="date" value={filters.startDate} max={filters.endDate} onChange={(event) => setFilter("startDate", event.target.value)} aria-label="Start date" />
+              </label>
+              <span className={styles.dateSeparator}>to</span>
+              <label className={styles.dateFilter} title="End date" onClick={() => setDateRangeOpen(true)}>
+                <input type="date" value={filters.endDate} min={filters.startDate} onChange={(event) => setFilter("endDate", event.target.value)} aria-label="End date" />
+              </label>
+              {dateRangeOpen && <div className={styles.dateRangeMenu}>
+                <div className={styles.datePresetList}>
+                  {DATE_PRESETS.map(([key, label]) => <button type="button" key={key} onClick={() => applyDateRange(getPresetDateRange(key))}>{label}</button>)}
+                </div>
+                <div className={styles.customDateRange}>
+                  <label><span>Start Date</span><input type="date" value={customStartDate} max={customEndDate} onChange={(event) => setCustomStartDate(event.target.value)} /></label>
+                  <label><span>End Date</span><input type="date" value={customEndDate} min={customStartDate} onChange={(event) => setCustomEndDate(event.target.value)} /></label>
+                  <button type="button" disabled={!customStartDate || !customEndDate || customStartDate > customEndDate} onClick={() => applyDateRange({ startDate: customStartDate, endDate: customEndDate })}>Apply Custom Range</button>
+                </div>
+              </div>}
+            </div>
             {!isVendorOnly && <SSRSelect
               instanceId="header-vendor-filter"
               className={styles.globalFilterSelect}
@@ -631,6 +708,7 @@ const Header = () => {
               hideSelectedOptions={false}
               isClearable
               isSearchable
+              filterOption={filterDCOption}
               noOptionsMessage={() => "No distribution centers found"}
               styles={globalFilterSelectStyles}
             />}

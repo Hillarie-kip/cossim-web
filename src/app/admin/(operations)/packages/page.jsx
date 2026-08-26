@@ -725,6 +725,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     () => shipmentOrderList.filter((order) => selectedRowKeys.includes(order.OrderNO)),
     [shipmentOrderList, selectedRowKeys]
   );
+  const selectionHasThirdAttempt = selectedOrdersForActions.some((order) => {
+    const statusID = Number(order.OrderStatusID ?? order.StatusID);
+    const statusName = String(order.StatusName || order.OrderStatusName || "").toUpperCase();
+    return statusID === 306 || statusName.includes("3RD ATTEMPT") || statusName.includes("THIRD ATTEMPT");
+  });
+  const selectedReturnsAreAtOrigin = ["reversed", "forwardreverse"].includes(String(activeTask || "").toLowerCase()) && selectedOrdersForActions.length > 0
+    && selectedOrdersForActions.every((order) => {
+      const normalizeDC = (value) => String(value || "").trim().toUpperCase();
+      const originCode = normalizeDC(order.OriginDCCode);
+      const destinationCode = normalizeDC(order.DestinationDCCode);
+      return Boolean(originCode && destinationCode && originCode === destinationCode);
+    });
   const allSelectedOrdersAssigned = selectedOrdersForActions.length > 0
     && selectedOrdersForActions.every(isAssignedDeliveryOrder);
 
@@ -773,17 +785,35 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       const option = dcOptions.find((item) => item.value === code);
       return [code, option?.label || code];
     });
+    const optionLookup = new Map(selectedOptions.flatMap(([code, label]) => [
+      [code.toLowerCase(), code],
+      [label.toLowerCase(), code],
+    ]));
     const { value } = await Swal.fire({
       title: "Choose the posting DC",
       text: `Select the distribution center that will ${actionLabel}. This choice applies only to this submission.`,
-      input: "select",
-      inputOptions: Object.fromEntries(selectedOptions),
-      inputPlaceholder: "Select a distribution center",
+      input: "text",
+      inputPlaceholder: "Search distribution centers",
       showCancelButton: true,
       confirmButtonText: "Continue",
-      inputValidator: (value) => value ? undefined : "Choose a distribution center",
+      didOpen: () => {
+        const input = Swal.getInput();
+        if (!input) return;
+        input.setAttribute("list", "posting-dc-options");
+        input.setAttribute("autocomplete", "off");
+        const dataList = document.createElement("datalist");
+        dataList.id = "posting-dc-options";
+        selectedOptions.forEach(([code, label]) => {
+          const option = document.createElement("option");
+          option.value = label;
+          option.label = code;
+          dataList.appendChild(option);
+        });
+        input.parentElement?.appendChild(dataList);
+      },
+      inputValidator: (inputValue) => optionLookup.has((inputValue || "").trim().toLowerCase()) ? undefined : "Choose a distribution center from the list",
     });
-    return value || "";
+    return optionLookup.get((value || "").trim().toLowerCase()) || "";
   };
 
   const courierOptions = useMemo(() => (Array.isArray(couriers) ? couriers : [])
@@ -998,7 +1028,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   const openBatchPanel = (mode) => {
     const selectedVendorCode = selectedOrdersForActions[0]?.VendorCode;
-    const selectedVendor = mode === "reversed" ? vendorOptions.find((option) => option.value === selectedVendorCode) : null;
+    const selectedVendorCodes = [...new Set(selectedOrdersForActions.map((order) => order.VendorCode).filter(Boolean))];
+    if (mode === "reversed" && selectedVendorCodes.length > 1) {
+      notify.error("Select orders from one vendor at a time for a return.");
+      return;
+    }
+    const selectedVendor = mode === "reversed" && selectedVendorCode
+      ? vendorOptions.find((option) => option.value === selectedVendorCode) || { value: selectedVendorCode, label: selectedOrdersForActions[0]?.VendorName || selectedVendorCode }
+      : null;
     let restoredOrders = [];
     let restoredScannedKeys = [];
     if (mode === "confirmed" && typeof window !== "undefined") {
@@ -1031,6 +1068,30 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   };
 
   const handleConsolidate = () => openBatchPanel("dispatch");
+
+  const handleDirectReturnToVendor = async () => {
+    if (!selectedReturnsAreAtOrigin) return notify.error("Select return orders whose Current DC is their Origin DC.");
+    const { isConfirmed } = await MySwal.fire({
+      title: "Return directly to vendor?",
+      text: `${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} will be marked Returned to Vendor without consolidation.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Return to Vendor",
+      confirmButtonColor: "#dc3545",
+    });
+    if (!isConfirmed) return;
+    try {
+      const postingDC = selectedOrdersForActions[0].OriginDCCode || selectedOrdersForActions[0].LatestLogDCCode || selectedOrdersForActions[0].CurrentDCCode || selectedOrdersForActions[0].InitialLogDCCode || selectedOrdersForActions[0].DestinationDCCode;
+      await updateTaskOrders(selectedOrdersForActions, (order) => ({
+        statusID: PACKAGE_STATUSES.RETURNED_TO_VENDOR.orderStatusID,
+        notes: "Returned directly to vendor from origin DC; consolidation not required",
+        extra: { dcCode: order.OriginDCCode || order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.DestinationDCCode },
+      }), postingDC);
+      notify.success(`${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} returned to vendor`);
+    } catch (error) {
+      notify.error(error.message || "Failed to return the selected packages to vendor");
+    }
+  };
 
   const openSelectedMobilePanel = () => {
     if (activeTask === "dispatch" && !selectedRowKeys.length) {
@@ -1457,13 +1518,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   const handleDeliveryAction = async (selectedAction) => {
     if (selectedOrdersForActions.length === 0) return notify.error("Select at least one order to continue.");
+    const action = selectedAction;
+    if (!action) return;
+    if (action === "schedule" && selectionHasThirdAttempt) {
+      return notify.error("Third-attempt orders cannot be rescheduled.");
+    }
     const actionDCCode = await chooseActionDC("post this delivery action");
     if (!actionDCCode) return;
     const orders = selectedOrdersForActions;
     const updateSelectedTaskOrders = (selectedOrders, buildUpdate) => updateTaskOrders(selectedOrders, buildUpdate, actionDCCode);
     const courierChoices = Object.fromEntries((Array.isArray(couriers) ? couriers : []).filter((courier) => courier.IsActive !== false && !courier.IsDeleted).map((courier) => [courier.CourierCode, courier.CourierName || courier.CourierCode]));
-    const action = selectedAction;
-    if (!action) return;
     try {
       if (action === "rider" || action === "reassign") {
         const rider = await chooseSearchableRider();
@@ -1598,7 +1662,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         });
         if (value) await updateSelectedTaskOrders(orders, (order) => {
           const count = Number(order.ScheduleCount ?? order.DeliveryScheduleCount ?? order.RescheduleCount ?? 0) + 1;
-          return { statusID: PACKAGE_STATUSES.DELIVERY_ATTEMPTED.orderStatusID, notes: `1st attempt scheduled for ${value.date}; Schedule ${count}: ${value.notes}` };
+          const currentStatusID = Number(order.OrderStatusID ?? order.StatusID);
+          const nextStatusID = currentStatusID === 304
+            ? 305 // Rescheduling the first attempt moves the order to the second attempt.
+            : currentStatusID === 305
+              ? 306 // Do not reset an existing second attempt back to the first attempt.
+              : PACKAGE_STATUSES.DELIVERY_ATTEMPTED.orderStatusID;
+          const attemptLabel = nextStatusID === 305 ? "2nd" : nextStatusID === 306 ? "3rd" : "1st";
+          return { statusID: nextStatusID, notes: `${attemptLabel} attempt scheduled for ${value.date}; Schedule ${count}: ${value.notes}` };
         });
       } else if (action === "lost") {
         const lostReasonOptions = LOST_REASON_CODES.map(([code, label]) => `<option value="${code}">${code} - ${label}</option>`).join("");
@@ -2266,7 +2337,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       title: (
         <div className="d-flex flex-column gap-1">
           <span>Order NO</span>
-          <span>Origin</span>
+          <span>Current DC</span>
           <span>Status</span>
         </div>
       ),
@@ -2287,7 +2358,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
             </button>
             <div className="packages-person-cell">
               <TruncatedText
-                value={`Origin: ${getDisplayText(record.OriginDCName || record.InitialLogDCName)}`}
+                value={`Current DC: ${getDisplayText(record.CurrentDCName || record.CurrentDCCode)}`}
                 className="packages-current-location"
               />
             </div>
@@ -2374,7 +2445,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       ),
     },
     {
-      title: "Origin",
+      title: "Current DC",
       dataIndex: "LatestLogDCName",
       width: 175,
       sorter: (a, b) =>
@@ -2384,7 +2455,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       render: (_, record) => (
         <div className="packages-person-cell py-1">
           <TruncatedText
-            value={`Origin: ${getDisplayText(record.OriginDCName || record.InitialLogDCName)}`}
+            value={`Current DC: ${getDisplayText(record.CurrentDCName || record.CurrentDCCode)}`}
             className="fw-medium"
           />
         </div>
@@ -2453,10 +2524,21 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       },
     },
     {
-      title: "Origin",
+      title: "Origin / Destination",
       dataIndex: "FromDCName",
       width: 260,
-      render: (_, record) => <div className="packages-person-cell"><TruncatedText value={record.FromDCName || record.OriginDCName || record.FromDCCode || record.OriginDCCode} className="fw-medium" /><TruncatedText value={record.FromDCCode || record.OriginDCCode} className="text-muted small" /></div>,
+      render: (_, record) => (
+        <div className="packages-person-cell gap-1">
+          <TruncatedText
+            value={`Origin: ${record.FromDCName || record.OriginDCName || "Unknown"}`}
+            className="fw-medium"
+          />
+          <TruncatedText
+            value={`Destination: ${record.ToDCName || record.DestinationDCName || "Unknown"}`}
+            className="text-muted small"
+          />
+        </div>
+      ),
     },
     {
       title: <div className="d-flex flex-column"><span>SLA</span><span>Date</span></div>,
@@ -2610,7 +2692,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   </> : <>
                     <button type="button" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                     <button type="button" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>
-                    <button type="button" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>
+                    {!selectionHasThirdAttempt && <button type="button" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>}
                     <button type="button" className="warning" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("reverse")}><i className="feather-rotate-ccw" />Reverse</button>
                     <button type="button" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
                     <button type="button" className="warning" disabled={selectedRowKeys.length === 0} onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
@@ -2632,14 +2714,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   </button>
                 </div>
               ) : <div className="d-flex align-items-center gap-2">
-                <button className="btn btn-primary btn-sm d-flex align-items-center" onClick={() => activeTask === "reversed" ? openBatchPanel("reversed") : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
+                <button className={`btn ${selectedReturnsAreAtOrigin ? "btn-outline-danger" : "btn-primary"} btn-sm d-flex align-items-center`} onClick={() => selectedReturnsAreAtOrigin ? handleDirectReturnToVendor() : activeTask === "reversed" ? openBatchPanel("reversed") : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
                   <Layers className="me-2 iconsize" />
-                  {activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns" : "Consolidate"}
+                  {selectedReturnsAreAtOrigin ? "Return to Vendor" : activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns" : "Consolidate"}
                 </button>
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>
-                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>
+                  {!selectionHasThirdAttempt && <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>}
                   <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reverse")}><i className="feather-rotate-ccw" />Reverse</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
                   <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
@@ -2862,7 +2944,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <div className="packages-detail-body">
                 {batchPanelMode !== "confirmed" && !existingBatchEditOnly && <section>
                   <h6>{batchPanelStage === "consolidate" ? "Consolidation route" : "Complete courier handover"}</h6>
-                  <div className="mb-3"><label className="form-label fw-semibold">{batchPanelMode === "reversed" ? "Vendor" : "Destination"}</label><SSRSelect instanceId="task-batch-destination" options={batchPanelMode === "reversed" ? vendorOptions : dcOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder={batchPanelMode === "reversed" ? "Select vendor" : "Select destination DC"} isSearchable /></div>
+                  <div className="mb-3"><label className="form-label fw-semibold">{batchPanelMode === "reversed" ? "Vendor" : "Destination"}</label>{batchPanelMode === "reversed" ? <input className="form-control" value={batchDestination?.label || selectedOrdersForActions[0]?.VendorName || selectedOrdersForActions[0]?.VendorCode || "Vendor not recorded"} readOnly aria-readonly="true" /> : <SSRSelect instanceId="task-batch-destination" options={dcOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder="Select destination DC" isSearchable />}</div>
                   {batchPanelStage === "complete" && <>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier *</label><SSRSelect instanceId="task-batch-courier" options={courierOptions} value={batchCourier} onChange={setBatchCourier} placeholder="Select courier" isSearchable /></div>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier cost (KES) *</label><input type="number" min="0" step="0.01" className="form-control" value={batchCourierCost} onChange={(event) => setBatchCourierCost(event.target.value)} placeholder="Enter courier cost" /></div>

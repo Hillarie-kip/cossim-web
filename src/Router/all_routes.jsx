@@ -59,11 +59,12 @@ export const all_routes = {
   vendorReceivedOrdersReport: "/admin/reports/vendor-received-orders",
   returnedOrdersReport: "/admin/reports/returned-orders",
   acceptedReturnsReport: "/admin/reports/accepted-returns",
+  allReturnsReport: "/admin/reports/all-returns",
   declinedReturnsReport: "/admin/reports/declined-returns",
   completedOrdersReport: "/admin/reports/completed-orders",
   consolidatedOrdersReport: "/admin/reports/consolidated-orders",
   shipmentSLAReport: "/admin/reports/shipment-sla",
   shipmentTrackingReport: "/admin/reports/shipment-tracking",
-  reconciliation: "/admin/reconciliation",
+  reconciliation: "/admin/payment-reconciliation",
   reconciliationPayment: "/admin/reconciliation-payment",
 };

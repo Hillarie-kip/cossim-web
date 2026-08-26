@@ -55,6 +55,11 @@ function isTokenValid(token) {
 
 export function middleware(request) {
   const { pathname } = request.nextUrl
+
+  // Keep old bookmarks and links on the current COD/M-Pesa reconciliation flow.
+  if (pathname === '/admin/reconciliation') {
+    return NextResponse.redirect(new URL('/admin/payment-reconciliation', request.url))
+  }
   
   // Get token from cookie
   const token = request.cookies.get('user-token')?.value

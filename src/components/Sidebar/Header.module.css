@@ -54,6 +54,67 @@
   font-size: 11px;
 }
 .dateSeparator { color: #98a2b3; font-size: 10px; text-transform: uppercase; }
+.dateRangePicker { position: relative; display: flex; align-items: center; gap: 7px; }
+.dateRangeMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 10000;
+  width: 400px;
+  display: grid;
+  grid-template-columns: 172px 1fr;
+  overflow: hidden;
+  border: 1px solid #ff6200;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(16,24,40,.16);
+}
+.datePresetList { display: flex; flex-direction: column; border-right: 1px solid #ffd3b8; }
+.datePresetList button {
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 0;
+  background: #fff8f3;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+.datePresetList button:nth-child(even) { background: #fff1e8; }
+.datePresetList button:hover { background: #ffe1cd; color: #ff6200; }
+.customDateRange { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.customDateRange label { position: relative; display: block; }
+.customDateRange label span {
+  position: absolute;
+  top: -7px;
+  left: 10px;
+  z-index: 1;
+  padding: 0 4px;
+  background: #fff;
+  color: #ff6200;
+  font-size: 10px;
+  font-weight: 600;
+}
+.customDateRange input {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #ff6200;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 12px;
+  outline: 0;
+}
+.customDateRange > button {
+  height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: #ff6200;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.customDateRange > button:disabled { cursor: not-allowed; opacity: .45; }
 
 .dropdownHeader {
   color: #6c757d;
