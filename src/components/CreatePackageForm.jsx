@@ -1815,10 +1815,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
 
                   {formData.cashOnDelivery && (
                     <div className="summary-item">
-                      <div className="summary-label">COD Amount</div>
+                      <div className="summary-label">Customer Pays on Delivery</div>
                       <div className="summary-value text-success">
-                        KES {formData.codAmount ? parseFloat(formData.codAmount).toFixed(2) : '0.00'}
+                        KES {(itemValueTotal + ((shippingRate?.IncludeShippingFeeInCOD || shippingRate?.includeShippingFeeInCOD) ? Number(shippingRate?.RateAmount || 0) : 0)).toFixed(2)}
                       </div>
+                      {(shippingRate?.IncludeShippingFeeInCOD || shippingRate?.includeShippingFeeInCOD) && <small className="text-muted">Includes KES {Number(shippingRate?.RateAmount || 0).toFixed(2)} delivery fee</small>}
                     </div>
                   )}
 

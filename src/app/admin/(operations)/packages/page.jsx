@@ -391,7 +391,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     ["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed", "reverseReceive"].includes(initialTask) ? initialTask : "deliver"
   );
   const [taskModule, setTaskModule] = useState(initialTask === "reverseReceive" ? "reverse" : "forward");
-  const isReceiveTask = activeTask === "receive" || activeTask === "reverseReceive";
+  // Only the forward receive view is batch-based. reverseReceive is backed by
+  // GetShipmentOrders (status 401) and must render the returned orders.
+  const isReceiveTask = activeTask === "receive";
   const [showDashboardBack, setShowDashboardBack] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
@@ -545,7 +547,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       setAllInboundBatches([]);
       setInboundBatches([]);
       setInboundBatchTotal(0);
-      setParentTaskCounts((current) => ({ ...current, receive: 0, reverseReceive: 0 }));
+      setParentTaskCounts((current) => ({ ...current, receive: 0 }));
       setInboundBatchesLoading(false);
       return undefined;
     }
@@ -584,12 +586,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }).then((enrichedBatches) => {
       if (!active) return;
       const forwardBatches = enrichedBatches.filter((batch) => !batch._IsReverse);
-      const reverseBatches = enrichedBatches.filter((batch) => batch._IsReverse);
       setAllInboundBatches(enrichedBatches);
       setParentTaskCounts((current) => ({
         ...current,
         receive: forwardBatches.length,
-        reverseReceive: reverseBatches.length,
       }));
     }).catch((batchError) => {
       if (active) notify.error(batchError?.message || "Failed to load inbound batches");
@@ -601,7 +601,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   useEffect(() => {
     if (!isReceiveTask) return;
-    const taskBatches = allInboundBatches.filter((batch) => activeTask === "reverseReceive" ? batch._IsReverse : !batch._IsReverse);
+    const taskBatches = allInboundBatches.filter((batch) => !batch._IsReverse);
     setInboundBatches(taskBatches);
     setInboundBatchTotal(taskBatches.length);
   }, [activeTask, allInboundBatches, isReceiveTask]);
@@ -693,7 +693,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       getShipmentOrders(taskCountParams("dispatch")),
       getShipmentOrders(taskCountParams("confirmed")),
       getShipmentOrders(taskCountParams("forwardReverse")),
-    ]).then(([deliverResponse, dispatchResponse, confirmedResponse, forwardReverseResponse]) => {
+      getShipmentOrders(taskCountParams("reversed")),
+      getShipmentOrders(taskCountParams("reverseReceive")),
+    ]).then(([deliverResponse, dispatchResponse, confirmedResponse, forwardReverseResponse, reversedResponse, reverseReceiveResponse]) => {
       if (!active) return;
       setParentTaskCounts((current) => ({
         ...current,
@@ -701,6 +703,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         dispatch: responseTotal(dispatchResponse),
         confirmed: responseTotal(confirmedResponse),
         forwardReverse: responseTotal(forwardReverseResponse),
+        reversed: responseTotal(reversedResponse),
+        reverseReceive: responseTotal(reverseReceiveResponse),
       }));
     }).catch(() => {
       // Individual table loading still reports API errors; preserve the last
@@ -2663,7 +2667,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   setBatchPanelMode("");
                   setBatchPanelStage("consolidate");
                   setReceiveBatch(null);
-                  if (key !== "receive" && key !== "reverseReceive") loadShipmentOrders({
+                  if (key !== "receive") loadShipmentOrders({
                     pageNo: 1,
                     taskType: key,
                     searchTerm: "",

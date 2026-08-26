@@ -59,7 +59,7 @@ const RoutePricingList = () => {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
     vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
-    basePrice: '', baseKM: '', pricePerKM: '',
+    basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
     fromDCCode: '',
     toDCCode: '',
     deliveryTypeCode: '',
@@ -166,7 +166,7 @@ const RoutePricingList = () => {
       setShowModal(false);
       setFormData({
         vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
-        basePrice: '', baseKM: '', pricePerKM: '',
+        basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
         fromDCCode: '',
         toDCCode: '',
         deliveryTypeCode: '',
@@ -186,7 +186,7 @@ const RoutePricingList = () => {
     setShowModal(false);
     setFormData({
       vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
-      basePrice: '', baseKM: '', pricePerKM: '',
+      basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
       fromDCCode: '',
       toDCCode: '',
       deliveryTypeCode: '',

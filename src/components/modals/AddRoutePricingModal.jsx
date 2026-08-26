@@ -52,6 +52,8 @@ const AddRoutePricingModal = ({ show, onHide, formData, onInputChange, onSubmit,
           <thead><tr><th>Price zone band</th><th>Sorting areas</th><th style={{ width: 210 }}>Price (KES)</th></tr></thead>
           <tbody>{zones.map((zone) => <tr key={zone.id}><td className="fw-semibold">{zone.name}</td><td className="small text-muted">{zone.dcCodes.join(", ") || "No sorting areas assigned"}</td><td><Form.Control type="number" min="0" step="0.01" value={zonePrices[zone.id] ?? ""} onChange={(event) => updateField("zonePrices", { ...zonePrices, [zone.id]: event.target.value })} placeholder="0.00" /></td></tr>)}</tbody>
         </Table>{!zones.length && <div className="p-3 text-muted">Create price zones before configuring zone-band pricing.</div>}</div>}
+        <Form.Check type="checkbox" id="includeShippingFeeInCOD" checked={Boolean(formData.includeShippingFeeInCOD)} onChange={(event) => updateField("includeShippingFeeInCOD", event.target.checked)} label="Include shipping fee in COD" />
+        <Form.Text className="text-muted">When COD is enabled, the customer pays the item value plus this delivery fee.</Form.Text>
       </Form>
     </Modal.Body>
     <Modal.Footer><Button variant="outline-secondary" onClick={onHide}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={loading || !canSubmit}>{loading ? "Saving..." : "Save Pricing"}</Button></Modal.Footer>
