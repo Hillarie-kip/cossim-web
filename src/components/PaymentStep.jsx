@@ -29,6 +29,8 @@ const PaymentStep = ({
   paymentType = "service", // 'service' or 'reconciliation'
   availablePaymentMethods = ["mpesa", "card", "bank", "client_stk"], // Default to all methods, can be filtered
   isCodPayment = false,
+  cashPaymentLabel = "Cash",
+  secondaryActionLabel = "Back to Order",
 }) => {
   const {
     loading,
@@ -116,7 +118,7 @@ const PaymentStep = ({
     },
     {
       id: "cash",
-      name: "Cash",
+      name: cashPaymentLabel,
       icon: <FaMoneyBillWave className="payment-icon" />,
       description: "Cash payment collection",
       enabled: true,
@@ -379,6 +381,9 @@ const PaymentStep = ({
       };
 
       const completeResponse = await completeServicePayment(completePayload);
+      if (completeResponse?.Error) {
+        throw new Error(completeResponse.Message || "Payment could not be recorded");
+      }
 
       setPaymentStatus("completed");
       setPaymentData(transactionData);
@@ -1037,7 +1042,7 @@ const PaymentStep = ({
             completingManualPayment
           }
         >
-          Back to Order
+          {secondaryActionLabel}
         </Button>
 
         {paymentStatus !== "completed" && (

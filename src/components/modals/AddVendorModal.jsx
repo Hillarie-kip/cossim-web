@@ -1,9 +1,12 @@
 "use client"
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import SSRSelect from "@/components/SSRSelect";
 import { useAdmin } from "@/hooks/useAdmin";
+import { useAuth } from "@/contexts/AuthContext";
+import { getSelectedDC } from "@/services/dcService";
 
 const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
+  const { user } = useAuth();
   const [form, setForm] = useState({
     vendorName: "",
     firstName: "",
@@ -28,10 +31,22 @@ const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
   }, [show, fetchDistributionCenters]);
 
   // Prepare options for the select dropdown
-  const dcOptions = distributionCenters.filter(dc => dc.IsPrimary).map(dc => ({
+  const dcOptions = useMemo(() => distributionCenters.filter(dc => dc.IsPrimary).map(dc => ({
     value: dc.DCCode,
     label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`
-  }));
+  })), [distributionCenters]);
+
+  useEffect(() => {
+    if (!show || form.defaultDCCode) return;
+    const assignedDCs = Array.isArray(user?.AssignedDistributionCenter) ? user.AssignedDistributionCenter : [];
+    if (assignedDCs.length <= 1) return;
+    const selectedDCCode = getSelectedDC();
+    const isAssigned = assignedDCs.some((dc) => (dc.DCCode || dc.dcCode) === selectedDCCode);
+    const isAvailable = dcOptions.some((option) => option.value === selectedDCCode);
+    if (selectedDCCode && isAssigned && isAvailable) {
+      setForm((current) => ({ ...current, defaultDCCode: selectedDCCode }));
+    }
+  }, [show, user, dcOptions, form.defaultDCCode]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -49,10 +64,10 @@ const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
     setSubmitting(true);
     
     try {
-      await onSubmit(form);
+      const result = await onSubmit(form);
 
       // if error occurs with submission, do not reset form
-      if (result.Error) return;
+      if (result?.Error) return;
 
       setForm({
         vendorName: "",

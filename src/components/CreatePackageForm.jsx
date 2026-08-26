@@ -53,10 +53,8 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const route = all_routes;
   const router = useRouter();
   const { user } = useAuth();
-
-  // Step management
-  const [currentStep, setCurrentStep] = useState('form'); // 'form' or 'payment'
-  const [orderResponse, setOrderResponse] = useState(null);
+  const [currentStep, setCurrentStep] = useState('form');
+  const [createdOrder, setCreatedOrder] = useState(null);
 
   const {
     deliveryTypes,
@@ -1060,14 +1058,12 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         return;
       }
 
-      // Success - Store order response and move to payment step
-      setOrderResponse({
+      setCreatedOrder({
         ...response,
-        totalAmount: shippingRate?.RateAmount || 0,
-        isCashOnDelivery: formData.cashOnDelivery
+        ...(response?.Response || {}),
+        CashOnDeliveryRequired: formData.cashOnDelivery,
       });
       setCurrentStep('payment');
-      notify.success('Package created successfully! Please proceed with payment.');
 
     } catch (error) {
       notify.error(error.message || 'Failed to create package');
@@ -1076,7 +1072,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     }
   };
 
-  const handlePaymentComplete = (paymentData) => {
+  const handleOrderCreated = (createdOrder) => {
     // Reset form and redirect
     setFormData({
       selectedVendor: null,
@@ -1124,31 +1120,34 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     agreeToTerms: true
     });
     setOrderItems([]);
-    setOrderResponse(null);
+    setCreatedOrder(null);
     setCurrentStep('form');
-
-    notify.success('Order completed successfully!');
+    notify.success('Package created successfully!');
     if (embedded) {
-      onComplete?.(paymentData);
+      onComplete?.(createdOrder);
       return;
     }
     router.push(backRoute);
   };
 
-  const handleBackToForm = () => {
-    setCurrentStep('form');
-  };
-
-  // If we're on the payment step, render PaymentStep component
-  if (currentStep === 'payment' && orderResponse) {
+  if (currentStep === 'payment' && createdOrder) {
     return (
-      <PaymentStep
-        orderData={orderResponse}
-        totalAmount={orderResponse.totalAmount}
-        isServiceFeeMandatory={orderResponse.IsServiceFeeMandatory}
-        onPaymentComplete={handlePaymentComplete}
-        onBack={handleBackToForm}
-      />
+      <div className="create-package-wrapper">
+        <div className="content create-package-form">
+          <PaymentStep
+            orderData={createdOrder}
+            totalAmount={Number(shippingRate?.RateAmount || createdOrder?.ServiceFee || 0)}
+            isServiceFeeMandatory={Boolean(createdOrder?.IsServiceFeeMandatory)}
+            paymentType="service"
+            availablePaymentMethods={["mpesa", "cash"]}
+            isCodPayment={Boolean(createdOrder?.CashOnDeliveryRequired)}
+            cashPaymentLabel="Cash on Delivery / Transaction Reference"
+            secondaryActionLabel="Skip Payment & Finish"
+            onPaymentComplete={(paymentData) => handleOrderCreated(paymentData?.orderData || createdOrder)}
+            onBack={() => handleOrderCreated(createdOrder)}
+          />
+        </div>
+      </div>
     );
   }
 
