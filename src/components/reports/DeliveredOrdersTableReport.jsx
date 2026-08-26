@@ -166,7 +166,7 @@ export default function DeliveredOrdersTableReport({
     { title: "Vendor", dataIndex: "VendorName", width: 210, render: (_, row) => <div><strong>{text(row.VendorName || row.SenderCompanyName)}</strong><small className="d-block text-muted">{text(row.VendorCode)}</small></div> },
     { title: "Receiver", dataIndex: "ReceiverContactName", width: 260, render: (_, row) => <div><strong>{text(row.ReceiverContactName)}</strong><small className="d-block text-muted">{text(row.ReceiverContactPhone)}</small><small className="d-block text-muted">{text(row.ReceiverStreetName)}</small></div> },
     { title: "Origin / Destination", dataIndex: "OriginDCName", width: 230, render: (_, row) => <div><span className="d-block">From: <strong>{text(row.OriginDCName || row.OriginDCCode)}</strong></span><small className="d-block text-muted">To: {text(row.DestinationDCName || row.DestinationDCCode)}</small></div> },
-    { title: "Service fee", dataIndex: "ServiceFee", width: 140, align: "right", render: (value) => `KES ${money(value)}` },
+    { title: "Service fee", dataIndex: "ServiceFee", width: 105, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "COD / Paid / Balance", dataIndex: "CODAmount", width: 250, align: "right", render: (_, row) => <div><span className="d-block">COD: <strong>KES {money(row.CODAmount)}</strong></span><small className="d-block text-success">Paid: KES {money(row.PaidAmount)}</small><small className="d-block text-danger">Balance: KES {money(Math.max(0, Number(row.CODAmount || 0) - Number(row.PaidAmount || 0)))}</small><small className="d-block text-muted text-break">Ref: {text(row.PaymentTransactionRefs)}</small></div> },
     { title: "Date / Status", dataIndex: "DateAdded", width: 160, render: (value, row) => { const formatted = reportDateParts(value); return <div><span className="d-block">{formatted.date}</span>{formatted.time && <small className="d-block">{formatted.time}</small>}<small className="d-block text-muted text-wrap">{text(row.StatusName || row.TaskManagementStatus)}</small></div>; } },
     ...(returnActions ? [{ title: "Actions", dataIndex: "ReturnActions", width: 180, fixed: "right", render: (_, row) => Number(row.StatusID) === 402 ? <div className="d-flex gap-1"><button className="btn btn-success btn-sm" onClick={() => resolveReturn(row, "accept")}>Accept</button>{(isAdmin || isDCUser) && <button className="btn btn-outline-danger btn-sm" onClick={() => resolveReturn(row, "decline")}>Decline</button>}</div> : <span className="text-muted">Resolved</span> }] : []),
@@ -323,7 +323,7 @@ export default function DeliveredOrdersTableReport({
             expandedRowRender: (order) => <OrderExpandedDetails order={order} />,
           }}
           loading={loading}
-          scroll={{ x: isConsolidated ? 1950 : 1720 }}
+          scroll={{ x: isConsolidated ? 1950 : 1450 }}
           emptyTitle={emptyTitle}
           emptyDescription={`No ${isConsolidated ? "handover batches" : "orders"} match the selected filters.`}
           pagination={{

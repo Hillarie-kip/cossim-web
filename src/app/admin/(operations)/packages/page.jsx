@@ -772,6 +772,22 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     [distributionCenterList]
   );
 
+  const globalDCOptions = useMemo(
+    () =>
+      (Array.isArray(distributionCenters) ? distributionCenters : [])
+        .map((dc) => {
+          const code = getDCCode(dc);
+          return code
+            ? {
+                value: code,
+                label: `${getDCName(dc)} (${code})`,
+              }
+            : null;
+        })
+        .filter(Boolean),
+    [distributionCenters]
+  );
+
   const chooseActionDC = async (actionLabel = "post this action") => {
     if (!allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1) return selectedGlobalDCCodes[0];
     if (!selectedGlobalDCCodes.length) return assignedDefaultDCCode || "";
@@ -1622,33 +1638,27 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       } else if (action === "schedule") {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const arrivalDates = (await Promise.all(orders.map(async (order) => {
-          const embeddedArrival = order.ArrivalDate || order.DateArrived || order.ArrivedAt || order.LatestStatusDate;
-          if (embeddedArrival) return new Date(embeddedArrival);
-          try {
-            const timelineResponse = await getShipmentTimeline({ orderNo: order.OrderNO });
-            const arrivalEvent = extractResponseList(timelineResponse)
-              .filter((event) => /ARRIVED|RECEIVED.*(?:AT|INTO).*DC/i.test(`${event.StatusName || ""} ${event.StatusCode || ""}`))
-              .sort((a, b) => new Date(b.EventTime || b.DateAdded || 0) - new Date(a.EventTime || a.DateAdded || 0))[0];
-            if (arrivalEvent) return new Date(arrivalEvent.EventTime || arrivalEvent.DateAdded);
-          } catch {
-            // Older orders may not expose timeline events; use their creation date below.
-          }
-          return new Date(order.DateAdded);
-        }))).filter((date) => !Number.isNaN(date.getTime()));
-        const lastAllowedDates = arrivalDates.map((arrival) => {
-          const lastAllowed = new Date(arrival);
+        const scheduleLimits = orders.map((order) => {
+          const dateAdded = new Date(order.DateAdded);
+          if (Number.isNaN(dateAdded.getTime())) return null;
+          const configuredSlaHours = Number(order.SLAHours ?? order.slaHours);
+          const slaDays = Number.isFinite(configuredSlaHours) && configuredSlaHours > 0
+            ? Math.ceil(configuredSlaHours / 24)
+            : 7;
+          const lastAllowed = new Date(dateAdded);
           lastAllowed.setHours(0, 0, 0, 0);
-          lastAllowed.setDate(lastAllowed.getDate() + 7);
-          return lastAllowed;
-        });
-        const maxScheduleDate = lastAllowedDates.length ? new Date(Math.min(...lastAllowedDates.map((date) => date.getTime()))) : new Date(today.getTime() + 7 * 86400000);
-        if (maxScheduleDate < today) return notify.error("These orders are already beyond the 7-day scheduling window from arrival.");
+          lastAllowed.setDate(lastAllowed.getDate() + slaDays);
+          return { lastAllowed, slaDays };
+        }).filter(Boolean);
+        if (scheduleLimits.length !== orders.length) return notify.error("The Date Added value is missing for one or more selected orders.");
+        const limitingSchedule = scheduleLimits.reduce((earliest, current) => current.lastAllowed < earliest.lastAllowed ? current : earliest);
+        const maxScheduleDate = limitingSchedule.lastAllowed;
+        if (maxScheduleDate < today) return notify.error("These orders are already beyond the scheduling window calculated from Date Added and SLA.");
         const minDate = formatLocalDateOnly(today);
         const maxDate = formatLocalDateOnly(maxScheduleDate);
         const { value } = await MySwal.fire({
           title: `Schedule ${orders.length} order${orders.length === 1 ? "" : "s"}`,
-          html: `<div class="text-start"><label for="delivery-date" class="form-label fw-semibold">Delivery date</label><input id="delivery-date" type="date" min="${minDate}" max="${maxDate}" class="form-control"><small class="text-muted">Must be no later than 7 days from arrival (${maxDate}).</small><label for="delivery-notes" class="form-label fw-semibold mt-3">Notes *</label><textarea id="delivery-notes" class="form-control" rows="3" placeholder="Enter scheduling notes"></textarea></div>`,
+          html: `<div class="text-start"><label for="delivery-date" class="form-label fw-semibold">Delivery date</label><input id="delivery-date" type="date" min="${minDate}" max="${maxDate}" class="form-control"><small class="text-muted">Must be no later than Date Added plus the available SLA (${limitingSchedule.slaDays} day${limitingSchedule.slaDays === 1 ? "" : "s"}: ${maxDate}).</small><label for="delivery-notes" class="form-label fw-semibold mt-3">Notes *</label><textarea id="delivery-notes" class="form-control" rows="3" placeholder="Enter scheduling notes"></textarea></div>`,
           showCancelButton: true,
           confirmButtonText: "Schedule",
           preConfirm: () => {
@@ -2944,7 +2954,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               <div className="packages-detail-body">
                 {batchPanelMode !== "confirmed" && !existingBatchEditOnly && <section>
                   <h6>{batchPanelStage === "consolidate" ? "Consolidation route" : "Complete courier handover"}</h6>
-                  <div className="mb-3"><label className="form-label fw-semibold">{batchPanelMode === "reversed" ? "Vendor" : "Destination"}</label>{batchPanelMode === "reversed" ? <input className="form-control" value={batchDestination?.label || selectedOrdersForActions[0]?.VendorName || selectedOrdersForActions[0]?.VendorCode || "Vendor not recorded"} readOnly aria-readonly="true" /> : <SSRSelect instanceId="task-batch-destination" options={dcOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder="Select destination DC" isSearchable />}</div>
+                  <div className="mb-3"><label className="form-label fw-semibold">{batchPanelMode === "reversed" ? "Vendor" : "Destination"}</label>{batchPanelMode === "reversed" ? <input className="form-control" value={batchDestination?.label || selectedOrdersForActions[0]?.VendorName || selectedOrdersForActions[0]?.VendorCode || "Vendor not recorded"} readOnly aria-readonly="true" /> : <SSRSelect instanceId="task-batch-destination" options={globalDCOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder="Select destination DC" isSearchable />}</div>
                   {batchPanelStage === "complete" && <>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier *</label><SSRSelect instanceId="task-batch-courier" options={courierOptions} value={batchCourier} onChange={setBatchCourier} placeholder="Select courier" isSearchable /></div>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier cost (KES) *</label><input type="number" min="0" step="0.01" className="form-control" value={batchCourierCost} onChange={(event) => setBatchCourierCost(event.target.value)} placeholder="Enter courier cost" /></div>
