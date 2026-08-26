@@ -28,6 +28,7 @@ import {
   UpdateSettlementModal,
 } from "@/components/modals";
 import notify from "@/lib/toast";
+import { getSettlementProofUrl } from "@/services/financeService";
 
 const SettlementDetailPage = () => {
   const route = all_routes;
@@ -402,6 +403,10 @@ const SettlementDetailPage = () => {
               <Card.Body>
                 <Row>
                   <Col md={6}>
+                    <div className="mb-3">
+                      <strong>Payment Reference:</strong> {settlementData?.settlementReferenceNO || "N/A"}
+                    </div>
+                    {settlementData?.proofFileID && <div className="mb-3"><a className="btn btn-sm btn-outline-primary" href={getSettlementProofUrl(settlementData.proofFileID)} target="_blank" rel="noreferrer">View Proof of Payment</a></div>}
                     <div className="mb-3">
                       <strong>Settlement Date:</strong> {formatDate(settlementData?.settledAt)}
                     </div>

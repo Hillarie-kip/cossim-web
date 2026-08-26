@@ -371,6 +371,30 @@ export const updateSettlementStatus = async (settlementNO, statusID) => {
     }
 };
 
+export const getVendorSettlementSummary = async (search = '') => {
+    const query = new URLSearchParams();
+    if (search) query.set('search', search);
+    const response = await api.get(`${apiRoutes.finance.getVendorSettlementSummary}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load unsettled vendors');
+    return response.data;
+};
+
+export const getVendorSettlementOrders = async (vendorCode) => {
+    const query = new URLSearchParams({ vendorCode });
+    const response = await api.get(`${apiRoutes.finance.getVendorSettlementOrders}?${query}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to load unsettled orders');
+    return response.data;
+};
+
+export const initiateVendorSettlement = async ({ vendorCode, referenceNO, proof }) => {
+    const form = new FormData(); form.append('vendorCode', vendorCode); form.append('referenceNO', referenceNO); form.append('proof', proof);
+    const response = await api.post(apiRoutes.finance.initiateVendorSettlement, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to initiate settlement');
+    return response.data;
+};
+
+export const getSettlementProofUrl = (fileID) => `${apiRoutes.finance.getSettlementProof}?fileID=${encodeURIComponent(fileID)}`;
+
 // Export all finance service functions
 const financeService = {
     getActiveShipmentRate,

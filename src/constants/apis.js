@@ -101,6 +101,10 @@ const apiRoutes = {
     finalizeSettlement: `${API_BASE}/api/Finance/FinalizeSettlement`,
     updateSettlement: `${API_BASE}/api/Finance/UpdateSettlement`,
     updateSettlementStatus: `${API_BASE}/api/Finance/UpdateSettlementStatus`,
+    getVendorSettlementSummary: `${API_BASE}/api/Finance/GetVendorSettlementSummary`,
+    getVendorSettlementOrders: `${API_BASE}/api/Finance/GetVendorSettlementOrders`,
+    initiateVendorSettlement: `${API_BASE}/api/Finance/InitiateVendorSettlement`,
+    getSettlementProof: `${API_BASE}/api/Finance/GetSettlementProof`,
   },
 
   vendors: {

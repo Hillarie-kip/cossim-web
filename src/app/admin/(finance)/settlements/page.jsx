@@ -16,6 +16,7 @@ import Datatable from "@/core/pagination/datatable";
 import { useFinance } from "@/hooks/useFinance";
 import SSRSelect from "@/components/SSRSelect";
 import vendorService from "@/services/vendorService";
+import { getVendorSettlementSummary, getSettlementProofUrl } from "@/services/financeService";
 
 const SettlementsList = () => {
   const route = all_routes;
@@ -44,6 +45,17 @@ const SettlementsList = () => {
   // Local state for vendors
   const [vendors, setVendors] = useState([]);
   const [vendorsLoading, setVendorsLoading] = useState(false);
+  const [vendorSummary, setVendorSummary] = useState([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  const loadVendorSummary = async () => {
+    setSummaryLoading(true);
+    try { setVendorSummary((await getVendorSettlementSummary()).Data || []); }
+    catch { setVendorSummary([]); }
+    finally { setSummaryLoading(false); }
+  };
+
+  useEffect(() => { loadVendorSummary(); }, []);
 
   // Fetch data on component mount and when filters change
   useEffect(() => {
@@ -201,6 +213,11 @@ const SettlementsList = () => {
       className: "text-end",
     },
     {
+      title: "Payment Reference",
+      dataIndex: "settlementReferenceNO",
+      render: (value, record) => <div><strong>{value || "-"}</strong>{record.proofFileID && <a className="d-block small" href={getSettlementProofUrl(record.proofFileID)} target="_blank" rel="noreferrer">View proof</a>}</div>,
+    },
+    {
       title: "Status",
       dataIndex: "statusID",
       render: (statusID) => getStatusBadge(statusID),
@@ -263,6 +280,7 @@ const SettlementsList = () => {
               <h4>Settlements</h4>
               <h6>Manage COD settlements and payments</h6>
             </div>
+            <Link href="/admin/settlements/new" className="btn btn-primary ms-3 align-self-center">New Settlement</Link>
           </div>
           <ul className="table-top-head">
             <li>
@@ -373,7 +391,21 @@ const SettlementsList = () => {
           </Card>
         )}
 
+        <div className="card table-list-card mb-4">
+          <div className="card-header"><h5 className="mb-0">Unsettled completed orders by vendor</h5></div>
+          <div className="card-body table-responsive">
+            <table className="table align-middle">
+              <thead><tr><th>Vendor</th><th className="text-end">Orders</th><th className="text-end">Orders Amount</th><th className="text-end">Paid Amount</th><th>Action</th></tr></thead>
+              <tbody>
+                {!summaryLoading && !vendorSummary.length && <tr><td colSpan="5" className="text-center text-muted py-4">No unsettled completed orders found.</td></tr>}
+                {vendorSummary.map((row) => <tr key={row.vendorCode}><td><strong>{row.vendorName || row.vendorCode}</strong><small className="d-block text-muted">{row.vendorCode}</small></td><td className="text-end">{row.orderCount}</td><td className="text-end">{formatCurrency(row.orderAmount)}</td><td className="text-end fw-semibold">{formatCurrency(row.paidAmount)}</td><td><Link href={`/admin/settlements/new?vendorCode=${encodeURIComponent(row.vendorCode)}`} className="btn btn-sm btn-primary">Settle</Link></td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="card table-list-card">
+          <div className="card-header"><h5 className="mb-0">Settlement batches</h5></div>
           <div className="card-body">
             <div className="table-top">
               <div className="search-set">
