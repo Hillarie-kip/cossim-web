@@ -2524,17 +2524,17 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       },
     },
     {
-      title: "Origin / Destination",
+      title: "Destination / Origin",
       dataIndex: "FromDCName",
       width: 260,
       render: (_, record) => (
         <div className="packages-person-cell gap-1">
           <TruncatedText
-            value={`Origin: ${record.FromDCName || record.OriginDCName || "Unknown"}`}
+            value={`Destination: ${record.ToDCName || record.DestinationDCName || "Unknown"}`}
             className="fw-medium"
           />
           <TruncatedText
-            value={`Destination: ${record.ToDCName || record.DestinationDCName || "Unknown"}`}
+            value={`Origin: ${record.FromDCName || record.OriginDCName || "Unknown"}`}
             className="text-muted small"
           />
         </div>

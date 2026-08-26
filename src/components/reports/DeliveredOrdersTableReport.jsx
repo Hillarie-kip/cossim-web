@@ -78,10 +78,13 @@ export default function DeliveredOrdersTableReport({
           pageNo: page,
           pageSize,
           checkSLA: false,
+          searchTerm: normalizedSearch || undefined,
           vendorCode: isVendorOnly ? assignedVendorCode || undefined : navigationFilters.vendorCode || undefined,
           toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
           startDate: navigationFilters.startDate || undefined,
           endDate: navigationFilters.endDate || undefined,
+          forceRefresh,
+          backgroundRefresh: false,
         } : {
           pageNo: page,
           pageSize,
@@ -230,6 +233,7 @@ export default function DeliveredOrdersTableReport({
         pageNo: page,
         pageSize,
         checkSLA: false,
+        searchTerm: searchTerm.trim() || undefined,
         vendorCode: isVendorOnly ? assignedVendorCode || undefined : navigationFilters.vendorCode || undefined,
         toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
         startDate: navigationFilters.startDate || undefined,
@@ -296,11 +300,11 @@ export default function DeliveredOrdersTableReport({
     </div>
     <div className="card table-list-card">
       <div className="card-body">
-        {!dateOnly && <div className="row g-2 align-items-end mb-3">
+        <div className="row g-2 align-items-end mb-3">
           <div className={returnActions ? "col-lg-7" : "col-lg-9"}><label className="form-label">Search</label><input className="form-control" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") loadReport({ page: 1, search: event.currentTarget.value }); }} placeholder={isConsolidated ? "Handover code, shipment no., source DC, or destination DC" : "Order number, vendor, customer, or DC"} /></div>
           {returnActions && <div className="col-lg-2"><label className="form-label">Status</label><select className="form-select" value={returnStatusFilter} onChange={(event) => setReturnStatusFilter(event.target.value)}><option value="pending">Pending</option><option value="all">All</option><option value="accepted">Accepted</option><option value="declined">Declined</option></select></div>}
           <div className="col-lg-3 d-flex gap-2"><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
-        </div>}
+        </div>
         <Datatable
           className="table"
           columns={columns}
