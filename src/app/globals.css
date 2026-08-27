@@ -7,6 +7,35 @@
 body {
   background-color: #FFF5F5 !important;
 }
+
+@media (max-width: 991.98px) {
+  .mobile-task-page-wrapper {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+.mobile-sidebar-filter-section { display: none; }
+
+@media (max-width: 991.98px) {
+  .mobile-sidebar-filter-section { display: block; }
+  .mobile-sidebar-filters > button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #ffd3b8;
+    border-radius: 10px;
+    background: #fff7f2;
+    color: #d94f00;
+    text-align: left;
+  }
+  .mobile-sidebar-filters .sidebar-icon { display: inline-flex; }
+  .mobile-sidebar-filters .sidebar-icon svg { width: 18px; height: 18px; margin: 0; }
+  .mobile-sidebar-filters .sidebar-label { display: flex; flex-direction: column; gap: 2px; }
+  .mobile-sidebar-filters .sidebar-label strong { font-size: 13px; }
+  .mobile-sidebar-filters .sidebar-label small { color: #667085; font-size: 10px; }
+}
 /* Chart loading state */
 .chart-loading {
   display: flex;

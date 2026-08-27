@@ -18,6 +18,7 @@ import { setSelectedDC } from "@/services/dcService";
 import styles from "./Header.module.css";
 import { RoleType } from "@/constants/user-roles";
 import { components as selectComponents } from "react-select";
+import { usePWA } from "@/contexts/PWAContext";
 
 const DCSelectOption = (props) => (
   <selectComponents.Option {...props}>
@@ -95,14 +96,21 @@ const Header = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [vendors, setVendors] = useState([]);
   const [distributionCenters, setDistributionCenters] = useState([]);
+  const [selectedRegion, setSelectedRegion] = useState("");
   const [loadingGlobalOptions, setLoadingGlobalOptions] = useState(false);
   const [dateRangeOpen, setDateRangeOpen] = useState(false);
+  const [globalFiltersVisible, setGlobalFiltersVisible] = useState(false);
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const dateRangeRef = useRef(null);
   const location = useLocation();
   const { user } = useAuth();
+  const { canInstall, isInstalled, isIOS, installApp } = usePWA();
   const { filters, setFilter, setFilters } = useGlobalFilters();
+
+  useEffect(() => {
+    setGlobalFiltersVisible(window.innerWidth >= 992);
+  }, []);
 
   useEffect(() => {
     if (!dateRangeOpen) return;
@@ -114,6 +122,15 @@ const Header = () => {
     document.addEventListener("mousedown", closeOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, [dateRangeOpen, filters.startDate, filters.endDate]);
+
+  useEffect(() => {
+    const toggleGlobalFilters = () => {
+      setGlobalFiltersVisible((visible) => !visible);
+      setDateRangeOpen(false);
+    };
+    window.addEventListener("cossim:toggle-global-filters", toggleGlobalFilters);
+    return () => window.removeEventListener("cossim:toggle-global-filters", toggleGlobalFilters);
+  }, []);
 
   const applyDateRange = ({ startDate, endDate }) => {
     if (!startDate || !endDate || startDate > endDate) return;
@@ -242,6 +259,10 @@ const Header = () => {
   useEffect(() => {
     const assignedDCs = Array.isArray(user?.AssignedDistributionCenter) ? user.AssignedDistributionCenter : [];
     setDistributionCenters(assignedDCs);
+    setSelectedRegion((current) => current && !assignedDCs.some((dc) =>
+      (dc.Region || dc.region || dc.RegionName || dc.regionName || "Other / Unassigned region") === current)
+      ? ""
+      : current);
     if (isVendorOnly || !assignedDCs.length) {
       if (filters.dcCodes || filters.dcCode) setFilter("dcCodes", "");
       return;
@@ -249,8 +270,6 @@ const Header = () => {
     const selectedCodes = String(filters.dcCodes || filters.dcCode || "").split(",").filter(Boolean);
     const assignedCodes = assignedDCs.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean);
     if (selectedCodes.includes("__ALL__")) {
-      const explicitAssignedCodes = assignedCodes.join(",");
-      if (filters.dcCodes !== explicitAssignedCodes) setFilter("dcCodes", explicitAssignedCodes);
       setSelectedDC(assignedCodes[0] || "");
       return;
     }
@@ -545,10 +564,20 @@ const Header = () => {
     groups[region].options.push({ value: code, label: dc.DCName || dc.dcName || code, region });
     return groups;
   }, {})).sort((a, b) => a.label.localeCompare(b.label));
+  const regionOptions = dcOptionsByRegion.map((group) => ({ value: group.label, label: group.label }));
+  const visibleDCOptionsByRegion = selectedRegion
+    ? dcOptionsByRegion.filter((group) => group.label === selectedRegion)
+    : dcOptionsByRegion;
+  const visibleHeaderDCCodes = visibleDCOptionsByRegion.flatMap((group) => group.options.map((option) => option.value));
   const saveDCSelection = (codes) => {
     const requestedCodes = new Set(codes);
     const uniqueCodes = assignedHeaderDCCodes.filter((code) => requestedCodes.has(code));
-    setFilter("dcCodes", uniqueCodes.length === 0 ? "__NONE__" : uniqueCodes.join(","));
+    const serialized = uniqueCodes.length === 0
+      ? "__NONE__"
+      : uniqueCodes.length === assignedHeaderDCCodes.length
+        ? "__ALL__"
+        : uniqueCodes.join(",");
+    setFilter("dcCodes", serialized);
     setSelectedDC(uniqueCodes[0] || "");
   };
 
@@ -621,7 +650,22 @@ const Header = () => {
       {/* Header Menu */}
       <ul className="nav user-menu">
         {isAdminView && (
-          <li className={`nav-item d-none d-lg-flex ${styles.globalFilters}`}>
+          <li className={`nav-item d-flex ${styles.globalFilterArea}`}>
+            <button
+              type="button"
+              className={`${styles.filterToggle} ${globalFiltersVisible ? styles.filterToggleActive : ""}`}
+              onClick={() => {
+                setGlobalFiltersVisible((visible) => !visible);
+                setDateRangeOpen(false);
+              }}
+              aria-expanded={globalFiltersVisible}
+              aria-controls="header-global-filters"
+              title={globalFiltersVisible ? "Hide date, vendor and DC filters" : "Show date, vendor and DC filters"}
+            >
+              <FeatherIcon icon="filter" size={16} />
+              <span>{globalFiltersVisible ? "Hide filters" : "Filters"}</span>
+            </button>
+            {globalFiltersVisible && <div id="header-global-filters" className={styles.globalFilters}>
             <div className={styles.dateRangePicker} ref={dateRangeRef}>
               <label className={styles.dateFilter} title="Start date" onClick={() => setDateRangeOpen(true)}>
                 <FeatherIcon icon="calendar" />
@@ -664,10 +708,28 @@ const Header = () => {
               styles={globalFilterSelectStyles}
             />}
             {!isVendorOnly && <SSRSelect
+              instanceId="header-region-filter"
+              className={styles.globalFilterSelect}
+              aria-label="Distribution center region"
+              options={regionOptions}
+              value={selectedRegion ? { value: selectedRegion, label: selectedRegion } : null}
+              onChange={(selected) => {
+                setSelectedRegion(selected?.value || "");
+                saveDCSelection([]);
+              }}
+              placeholder="All regions"
+              isDisabled={loadingGlobalOptions}
+              isLoading={loadingGlobalOptions}
+              isClearable
+              isSearchable
+              noOptionsMessage={() => "No regions found"}
+              styles={globalFilterSelectStyles}
+            />}
+            {!isVendorOnly && <SSRSelect
               instanceId="header-dc-filter"
               className={`${styles.globalFilterSelect} ${styles.globalDCFilterSelect}`}
               aria-label="Distribution center"
-              options={dcOptionsByRegion}
+              options={visibleDCOptionsByRegion}
               value={selectedHeaderDCCodes.map((code) => {
                 const dc = distributionCenters.find((item) => (item.DCCode || item.dcCode) === code);
                 return { value: code, label: dc?.DCName || dc?.dcName || code };
@@ -712,12 +774,15 @@ const Header = () => {
               noOptionsMessage={() => "No distribution centers found"}
               styles={globalFilterSelectStyles}
             />}
-            {!isVendorOnly && distributionCenters.length > 0 && (
+            {!isVendorOnly && visibleHeaderDCCodes.length > 0 && (
               <div className={styles.dcSelectionActions}>
-                <button type="button" onClick={() => saveDCSelection(assignedHeaderDCCodes)}>Select all</button>
+                <button type="button" onClick={() => saveDCSelection(visibleHeaderDCCodes)}>
+                  {selectedRegion ? "Select all in region" : "Select all DCs"}
+                </button>
                 <button type="button" onClick={() => saveDCSelection([])}>Unselect all</button>
               </div>
             )}
+            </div>}
           </li>
         )}
         {/* Search */}
@@ -877,6 +942,28 @@ const Header = () => {
 
           {/* ── Profile & Settings ── */}
           <div className={styles.menuSection}>
+            {!isInstalled && (
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={async () => {
+                  if (canInstall) {
+                    await installApp();
+                    mobileDropdown.close();
+                    return;
+                  }
+                  window.alert(isIOS
+                    ? 'To install COSSIM, tap Share and then “Add to Home Screen”.'
+                    : 'Open your browser menu and choose “Install app” or “Add to Home screen”.');
+                }}
+              >
+                <span className={styles.menuIcon}><FeatherIcon icon="download" size={16} /></span>
+                <span className={styles.menuItemBody}>
+                  <span className={styles.menuItemTitle}>Install COSSIM</span>
+                  <span className={styles.menuItemSub}>Add the app to this device</span>
+                </span>
+              </button>
+            )}
             <NextLink href="/profile" className={styles.menuItem} onClick={mobileDropdown.close}>
               <span className={styles.menuIcon}><FeatherIcon icon="user" size={16} /></span>
               <span className={styles.menuItemBody}>

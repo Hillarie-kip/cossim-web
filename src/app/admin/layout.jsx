@@ -5,6 +5,7 @@ import AuthGuard from '@/components/AuthGuard'
 import RoleGuard from '@/components/RoleGuard'
 import { RoleType } from '@/constants/user-roles'
 import PropTypes from 'prop-types'
+import MobileTaskNavigation from '@/components/MobileTaskNavigation/MobileTaskNavigation'
 
 export default function DashboardLayout({ children }) {
   return (
@@ -22,9 +23,10 @@ export default function DashboardLayout({ children }) {
         <div className={`main-wrapper`}>
             <Header />
             <Sidebar />
-            <div className="page-wrapper">
+            <div className="page-wrapper mobile-task-page-wrapper">
               {children}
             </div>
+            <MobileTaskNavigation />
           </div>
       </RoleGuard>
     </AuthGuard>

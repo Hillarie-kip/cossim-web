@@ -58,7 +58,7 @@ export default function DashboardPage(){
   const [searchResult,setSearchResult]=useState(null);
   const [searchLoading,setSearchLoading]=useState(false);
   const [searchError,setSearchError]=useState("");
-  useEffect(()=>{clearShipmentOrderAnalytics();if(!isVendorOnly&&!activeDCCodes)return;fetchShipmentOrderAnalytics({startDate:`${filters.startDate}T00:00:00`,endDate:`${filters.endDate}T23:59:59`,vendorCode:filters.vendorCode||undefined,originDCCode:activeDCCodes||undefined,destinationDCCode:activeDCCodes||undefined}).catch(()=>{});},[fetchShipmentOrderAnalytics,filters.startDate,filters.endDate,filters.vendorCode,activeDCCodes,isVendorOnly]);
+  useEffect(()=>{clearShipmentOrderAnalytics();if(!isVendorOnly&&!activeDCCodes)return;fetchShipmentOrderAnalytics({startDate:`${filters.startDate}T00:00:00`,endDate:`${filters.endDate}T23:59:59`,vendorCode:filters.vendorCode||undefined,originDCCode:activeDCCodes||undefined}).catch(()=>{});},[fetchShipmentOrderAnalytics,filters.startDate,filters.endDate,filters.vendorCode,activeDCCodes,isVendorOnly]);
   const scopedAnalytics=(isVendorOnly||activeDCCodes)?shipmentOrderAnalytics:null;
   const summary=readAnalyticsValue(scopedAnalytics,"Summary",{});
   const statuses=readAnalyticsArray(scopedAnalytics,"StatusAnalytics");

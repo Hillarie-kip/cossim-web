@@ -51,6 +51,22 @@ const getStatusName = (status) =>
   status?.Name ||
   "";
 
+const normalizeDCScope = (value, availableCodes) => {
+  const raw = String(value || "").trim();
+  if (["__ALL__", "__NONE__"].includes(raw)) return raw;
+  if (raw.startsWith("__ALL_EXCEPT__:")) {
+    const excluded = raw.slice("__ALL_EXCEPT__:".length)
+      .split("|")
+      .map((code) => code.trim())
+      .filter((code) => code && availableCodes.has(code));
+    return excluded.length ? `__ALL_EXCEPT__:${excluded.join("|")}` : "__ALL__";
+  }
+  return raw.split(",")
+    .map((code) => code.trim())
+    .filter((code) => code && availableCodes.has(code))
+    .join(",");
+};
+
 const getStatusBadgeClass = (statusCode) => {
   const code = Number(statusCode);
   if ([202, 302, 503, 603, 804, 901].includes(code)) return "badge bg-success";
@@ -468,22 +484,24 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const assignedGlobalDCCodes = assignedDistributionCenters
     .map((dc) => dc.DCCode || dc.dcCode)
     .filter(Boolean);
-  const selectedGlobalDCCodes = (rawGlobalDCFilter === "__ALL__" ? assignedGlobalDCCodes : rawGlobalDCFilter.split(","))
-    .map((code) => code.trim())
-    .filter((code) => code && code !== "__NONE__");
-  const noDCSelected = rawGlobalDCFilter === "__NONE__";
-  const allDCsSelected = rawGlobalDCFilter === "__ALL__";
   const allExceptSelected = rawGlobalDCFilter.startsWith("__ALL_EXCEPT__:");
   const excludedGlobalDCCodes = new Set(allExceptSelected
     ? rawGlobalDCFilter.slice("__ALL_EXCEPT__:".length).split("|").filter(Boolean)
     : []);
-  const shipmentScopeDCCodes = noDCSelected ? "" : selectedGlobalDCCodes.join(",") || assignedDefaultDCCode || "";
+  const selectedGlobalDCCodes = (rawGlobalDCFilter === "__ALL__" || allExceptSelected
+    ? assignedGlobalDCCodes.filter((code) => !excludedGlobalDCCodes.has(code))
+    : rawGlobalDCFilter.split(","))
+    .map((code) => code.trim())
+    .filter((code) => code && code !== "__NONE__");
+  const noDCSelected = rawGlobalDCFilter === "__NONE__";
+  const allDCsSelected = rawGlobalDCFilter === "__ALL__";
+  const shipmentScopeDCCodes = noDCSelected
+    ? ""
+    : (allDCsSelected || allExceptSelected ? rawGlobalDCFilter : selectedGlobalDCCodes.join(",")) || assignedDefaultDCCode || "";
   const currentDCCode = !allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1
     ? selectedGlobalDCCodes[0]
     : (selectedGlobalDCCodes.length || noDCSelected ? "" : assignedDefaultDCCode || "");
-  const inboundDestinationScope = noDCSelected
-    ? ""
-    : selectedGlobalDCCodes.join(",") || currentDCCode;
+  const inboundDestinationScope = noDCSelected ? "" : shipmentScopeDCCodes || currentDCCode;
 
   const selectedDetailOrder = selectedRowKeys.length === 1 && Array.isArray(shipmentOrders)
     ? shipmentOrders.find((order) => order.OrderNO === selectedRowKeys[0])
@@ -678,37 +696,23 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       // Dispatch/handover orders leave the selected DC, so scope them by origin.
       fromDCCode: taskType === "dispatch" ? shipmentScopeDCCodes : undefined,
       toDCCode: taskType === "dispatch" ? undefined : commonParams.toDCCode,
-      checkSLA: true,
-      onBackgroundRefresh: (response) => {
-        if (!active) return;
-        setParentTaskCounts((current) => ({
-          ...current,
-          [taskType]: responseTotal(response),
-        }));
-      },
+      checkSLA: taskType !== "confirmed",
+      // Badge counts are independent, disposable requests. Do not let cached
+      // background refreshes outlive a tab change or share the active-list UI.
+      indexedDBCache: false,
+      backgroundRefresh: false,
     });
 
-    Promise.all([
-      getShipmentOrders(taskCountParams("deliver")),
-      getShipmentOrders(taskCountParams("dispatch")),
-      getShipmentOrders(taskCountParams("confirmed")),
-      getShipmentOrders(taskCountParams("forwardReverse")),
-      getShipmentOrders(taskCountParams("reversed")),
-      getShipmentOrders(taskCountParams("reverseReceive")),
-    ]).then(([deliverResponse, dispatchResponse, confirmedResponse, forwardReverseResponse, reversedResponse, reverseReceiveResponse]) => {
+    const countTaskTypes = ["deliver", "dispatch", "confirmed", "forwardReverse", "reversed", "reverseReceive"];
+    Promise.allSettled(countTaskTypes.map((taskType) => getShipmentOrders(taskCountParams(taskType)))).then((results) => {
       if (!active) return;
-      setParentTaskCounts((current) => ({
-        ...current,
-        deliver: responseTotal(deliverResponse),
-        dispatch: responseTotal(dispatchResponse),
-        confirmed: responseTotal(confirmedResponse),
-        forwardReverse: responseTotal(forwardReverseResponse),
-        reversed: responseTotal(reversedResponse),
-        reverseReceive: responseTotal(reverseReceiveResponse),
-      }));
-    }).catch(() => {
-      // Individual table loading still reports API errors; preserve the last
-      // successful parent counts if the independent badge refresh fails.
+      setParentTaskCounts((current) => {
+        const next = { ...current };
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") next[countTaskTypes[index]] = responseTotal(result.value);
+        });
+        return next;
+      });
     });
 
     return () => { active = false; };
@@ -864,7 +868,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       : (requestOverrides.toDCCode || toDCCode || undefined),
     vendorCategoryCode: undefined,
     taskType,
-    checkSLA: true,
+    checkSLA: taskType !== "confirmed",
   });
   };
 
@@ -890,11 +894,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const nextEndDate = parsePackageFilterDate(globalFilters.endDate);
     const nextVendorCode = isVendorOnly ? loggedInVendorCode : (globalFilters.vendorCode || "");
     const availableCodes = new Set(dcOptions.map((option) => option.value));
-    const nextDCCode = String(globalFilters.dcCodes || globalFilters.dcCode || "")
-      .split(",")
-      .map((code) => code.trim())
-      .filter((code) => code && availableCodes.has(code))
-      .join(",");
+    const nextDCCode = normalizeDCScope(globalFilters.dcCodes || globalFilters.dcCode, availableCodes);
     const datesChanged = formatLocalDateOnly(startDate) !== formatLocalDateOnly(nextStartDate)
       || formatLocalDateOnly(endDate) !== formatLocalDateOnly(nextEndDate);
     const vendorChanged = vendorCode !== nextVendorCode;
@@ -912,7 +912,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       toDCCode: nextDCCode || undefined,
       statusIDs: undefined,
       taskType: activeTask,
-      checkSLA: true,
+      checkSLA: activeTask !== "confirmed",
       startDate: formatLocalDateOnly(nextStartDate),
       endDate: formatLocalDateOnly(nextEndDate),
     });
@@ -930,7 +930,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       : (queryFilters.vendorCode || globalFilters.vendorCode || "");
     const requestedDCCode = queryFilters.toDCCode || globalFilters.dcCodes || globalFilters.dcCode || "";
     const availableCodes = new Set(dcOptions.map((option) => option.value));
-    const effectiveDCCode = requestedDCCode.split(",").map((code) => code.trim()).filter((code) => code && availableCodes.has(code)).join(",");
+    const effectiveDCCode = normalizeDCScope(requestedDCCode, availableCodes);
     const resolvedInitialTask = queryFilters.task === "reverse-orders"
       ? "reversed"
       : ["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed", "reverseReceive"].includes(queryFilters.task)
@@ -965,7 +965,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       toDCCode: initialTaskUsesOriginDC ? undefined : effectiveDCCode || undefined,
       statusIDs: undefined,
       taskType: resolvedInitialTask,
-      checkSLA: true,
+      checkSLA: resolvedInitialTask !== "confirmed",
       onlyActive: Boolean(queryFilters.onlyActive),
       startDate: formatLocalDateOnly(effectiveStartDate),
       endDate: formatLocalDateOnly(effectiveEndDate),
@@ -1759,6 +1759,26 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const handleConfirmedPickSubmit = async () => {
     const scannedOrders = batchPanelOrders.filter((order) => batchScannedKeys.includes(order.OrderNO));
     if (!scannedOrders.length) return notify.error("Scan at least one confirmed package.");
+    let refreshedOrders;
+    try {
+      refreshedOrders = await Promise.all(scannedOrders.map(async (scannedOrder) => {
+        const response = await fetchShipmentOrder({ orderNO: scannedOrder.OrderNO });
+        const responseData = response?.Data ?? response?.data ?? response;
+        return Array.isArray(responseData) ? responseData[0] : responseData;
+      }));
+    } catch (refreshError) {
+      return notify.error(refreshError?.message || "Could not verify the latest package statuses.");
+    }
+    const staleOrderNumbers = refreshedOrders
+      .map((order, index) => (!order?.OrderNO || getTaskType(order) !== "confirmed")
+        ? order?.OrderNO || scannedOrders[index]?.OrderNO
+        : null)
+      .filter(Boolean);
+    if (staleOrderNumbers.length) {
+      setBatchPanelOrders((current) => current.filter((order) => !staleOrderNumbers.includes(order.OrderNO)));
+      setBatchScannedKeys((current) => current.filter((orderNO) => !staleOrderNumbers.includes(orderNO)));
+      return notify.error(`${staleOrderNumbers.length} package${staleOrderNumbers.length === 1 ? " is" : "s are"} no longer awaiting vendor pickup and ${staleOrderNumbers.length === 1 ? "was" : "were"} removed.`);
+    }
     const { isConfirmed } = await MySwal.fire({
       title: "Complete pick and scan?",
       text: `${scannedOrders.length} package${scannedOrders.length === 1 ? "" : "s"} will move to Picked by Rider.`,
@@ -1769,8 +1789,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!isConfirmed) return;
     setBatchSubmitting(true);
     try {
-      await updateTaskOrders(scannedOrders, () => ({ statusID: 102, notes: "Picked from Vendor via Pick and Scan" }));
-      notify.success(`${scannedOrders.length} package${scannedOrders.length === 1 ? "" : "s"} marked as Picked by Rider`);
+      await updateTaskOrders(refreshedOrders, () => ({ statusID: 102, notes: "Picked from Vendor via Pick and Scan" }));
+      notify.success(`${refreshedOrders.length} package${refreshedOrders.length === 1 ? "" : "s"} marked as Picked by Rider`);
       if (typeof window !== "undefined") window.localStorage.removeItem(pickScanStorageKey);
       setBatchPanelMode("");
       setBatchPanelOrders([]);
@@ -2660,6 +2680,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 aria-selected={activeTask === key}
                 className={`packages-task-tab ${activeTask === key ? "packages-task-tab-active" : ""}`}
                 onClick={() => {
+                  clearError();
                   setActiveTask(key);
                   persistActiveTask(key);
                   setSelectedRowKeys([]);
@@ -2727,8 +2748,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <Layers className="me-2 iconsize" />Pick Orders from Vendor
                   </button>
                 </div>
-              ) : <div className="d-flex align-items-center gap-2">
-                <button className={`btn ${selectedReturnsAreAtOrigin ? "btn-outline-danger" : "btn-primary"} btn-sm d-flex align-items-center`} onClick={() => selectedReturnsAreAtOrigin ? handleDirectReturnToVendor() : activeTask === "reversed" ? openBatchPanel("reversed") : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
+              ) : <div className="d-flex align-items-center gap-2 packages-step-actions">
+                <button className={`btn ${selectedReturnsAreAtOrigin ? "btn-outline-danger" : "btn-primary"} btn-sm d-flex align-items-center packages-step-primary`} onClick={() => selectedReturnsAreAtOrigin ? handleDirectReturnToVendor() : activeTask === "reversed" ? openBatchPanel("reversed") : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
                   <Layers className="me-2 iconsize" />
                   {selectedReturnsAreAtOrigin ? "Return to Vendor" : activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns" : "Consolidate"}
                 </button>
@@ -2774,17 +2795,19 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           {!taskPageLoading && !error && (
             <div className="packages-table-workspace">
             <div className="packages-table-shell">
-              <div className="d-flex align-items-center justify-content-between gap-3 px-3 py-2 border-bottom bg-white">
+              <div className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom bg-white packages-mobile-search-row">
                 <strong className="small text-muted">{isReceiveTask ? "Batches" : "Orders"}</strong>
-                <input
-                  type="text"
-                  placeholder="Search by order number, vendor, DC, or status"
-                  className="form-control form-control-sm"
-                  style={{ maxWidth: "360px" }}
-                  value={searchTerm}
-                  onChange={handleSearch}
-                  aria-label="Search packages"
-                />
+                <div className="d-flex align-items-center gap-2 flex-grow-1 justify-content-end packages-mobile-search-controls">
+                  <input
+                    type="text"
+                    placeholder="Search by order number, vendor, DC, or status"
+                    className="form-control form-control-sm"
+                    style={{ maxWidth: "360px" }}
+                    value={searchTerm}
+                    onChange={handleSearch}
+                    aria-label="Search packages"
+                  />
+                </div>
               </div>
               <div className="packages-mobile-cards">
                 {(isReceiveTask ? inboundBatches : taskOrders).map((record) => {
@@ -2794,6 +2817,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   return <article className={`packages-mobile-card ${selected ? "is-selected" : ""}`} key={recordKey}>
                     <div className="packages-mobile-card-head">
                       <span className="packages-mobile-card-status">{isReceiveTask ? `${Number(record._ReceivedItems || 0)}/${totalItems} received` : getDisplayText(record.StatusName || record.TaskManagementStatus)}</span>
+                      <label className="packages-mobile-card-select">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={selected}
+                          onChange={(event) => setSelectedRowKeys((current) => event.target.checked
+                            ? [...new Set([...current, recordKey])]
+                            : current.filter((key) => key !== recordKey))}
+                          aria-label={`Select ${isReceiveTask ? "batch" : "order"} ${recordKey}`}
+                        />
+                        <span>{selected ? "Selected" : "Select"}</span>
+                      </label>
                     </div>
                     <button type="button" className="packages-mobile-card-body" onClick={() => {
                       if (isReceiveTask) openReceivePanel(record);
@@ -3668,9 +3703,34 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         @media (max-width: 767.98px) {
           .packages-mobile-hidden-header { display: none !important; }
           .packages-task-toolbar { align-items: stretch; flex-direction: column; padding-right: 0; }
-          .packages-selection-actions { display: none; }
+          .packages-task-tabs { display: none; }
+          .packages-selection-actions {
+            position: sticky;
+            top: 60px;
+            z-index: 25;
+            display: flex;
+            width: 100%;
+            align-items: stretch;
+            padding: 10px 12px;
+            border-bottom: 1px solid #ffd8bf;
+            background: #fffaf7;
+            box-shadow: 0 4px 10px rgba(16, 24, 40, .06);
+          }
+          .packages-selection-actions > div { width: 100%; justify-content: flex-start !important; overflow-x: auto; }
+          .packages-selection-actions .btn { min-height: 40px; flex: 0 0 auto; white-space: nowrap; }
+          .packages-selection-count { align-self: center; flex: 0 0 auto; white-space: nowrap; }
           .packages-delivery-actions { width: 100%; flex-wrap: wrap; }
-          .packages-delivery-actions button { flex: 1 1 calc(50% - 5px); }
+          .packages-delivery-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+          }
+          .packages-delivery-actions button { min-width: 0; min-height: 40px; padding: 7px 4px; font-size: 10px; }
+          .packages-step-actions { display: grid !important; grid-template-columns: 1fr; width: 100%; }
+          .packages-step-actions > .packages-step-primary { width: 100%; min-height: 42px; justify-content: center; }
+          .packages-step-actions > .packages-delivery-actions { width: 100%; overflow: visible; }
+          .packages-mobile-search-controls { min-width: 0; }
+          .packages-mobile-search-controls input { min-width: 0; }
           .packages-filter-bar {
             gap: 10px;
           }
@@ -3743,7 +3803,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           .packages-mobile-selection-fab {
             position: fixed;
             right: 18px;
-            bottom: calc(18px + env(safe-area-inset-bottom));
+            bottom: calc(82px + env(safe-area-inset-bottom));
             z-index: 1000;
             display: inline-flex;
             align-items: center;

@@ -6,6 +6,7 @@ import AuthGuard from '@/components/AuthGuard'
 import RoleGuard from '@/components/RoleGuard'
 import { RoleType } from '@/constants/user-roles'
 import PropTypes from 'prop-types'
+import MobileTaskNavigation from '@/components/MobileTaskNavigation/MobileTaskNavigation'
 
 export default function DistributionCenterDashboardLayout({ children }) {
   return (
@@ -20,9 +21,10 @@ export default function DistributionCenterDashboardLayout({ children }) {
         <div className={`main-wrapper`}>
             <Header />
             <DistributionCenterManagerSidebar />
-            <div className="page-wrapper">
+            <div className="page-wrapper mobile-task-page-wrapper">
                 {children}
             </div>
+            <MobileTaskNavigation />
             <Loader />
           </div>
       </RoleGuard>

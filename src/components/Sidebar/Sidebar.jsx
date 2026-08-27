@@ -6,6 +6,7 @@ import { SidebarData } from "@/core/data/siderbar_data";
 import SidebarItem from "./SidebarItem";
 import { useAuth } from "@/contexts/AuthContext";
 import { RoleType } from "@/constants/user-roles";
+import MobileFiltersMenuItem from "./MobileFiltersMenuItem";
 
 const Sidebar = () => {
   const Location = useLocation();
@@ -70,6 +71,10 @@ const Sidebar = () => {
           <div className="sidebar-inner slimscroll">
             <div id="sidebar-menu" className="sidebar-menu">
               <ul>
+                <li className="submenu-open mobile-sidebar-filter-section">
+                  <h6 className="submenu-hdr">TASK FILTERS</h6>
+                  <ul><MobileFiltersMenuItem onOpen={closeMobileSidebar} /></ul>
+                </li>
                 {sidebarData?.map((mainLabel) => (
                   <li className="submenu-open" key={mainLabel?.label}>
                     <h6 className="submenu-hdr">{mainLabel?.label}</h6>

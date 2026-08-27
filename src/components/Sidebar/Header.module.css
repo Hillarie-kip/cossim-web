@@ -2,10 +2,27 @@
 .dashboardSwitcher { padding: 0.5rem 0; }
 
 .globalFilters {
+  display: flex;
   align-items: center;
   gap: 7px;
-  margin-right: 10px;
 }
+.globalFilterArea { align-items: center; gap: 7px; margin-right: 10px; }
+.filterToggle {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.filterToggle:hover,
+.filterToggleActive { border-color: #ff6200; color: #ff6200; }
 .globalFilters select,
 .dateFilter {
   height: 36px;
@@ -115,6 +132,48 @@
   font-weight: 700;
 }
 .customDateRange > button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (max-width: 991.98px) {
+  .globalFilterArea { margin-right: 2px; }
+  .filterToggle {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .filterToggle span { display: none; }
+  .globalFilters {
+    position: fixed;
+    top: 60px;
+    right: 8px;
+    left: 8px;
+    z-index: 1055;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    max-height: calc(100dvh - 146px);
+    overflow: visible auto;
+    padding: 12px;
+    border: 1px solid #e4e7ec;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 16px 36px rgba(16, 24, 40, 0.18);
+  }
+  .globalFilterSelect,
+  .globalDCFilterSelect { width: 100%; min-width: 0; }
+  .dateRangePicker { width: 100%; }
+  .dateFilter { flex: 1; min-width: 0; }
+  .dateFilter input { width: 100%; min-width: 0; }
+  .dateRangeMenu {
+    position: fixed;
+    top: 108px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 190px);
+    overflow-y: auto;
+  }
+  .dcSelectionActions { flex-direction: row; gap: 14px; }
+}
 
 .dropdownHeader {
   color: #6c757d;

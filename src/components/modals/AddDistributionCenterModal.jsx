@@ -8,9 +8,14 @@ const blank = { DCName: "", CityCode: "", Region: "", ContactPhone: "", ContactE
 const loadGooglePlaces = () => {
   if (window.google?.maps?.places) return Promise.resolve(true);
   if (window.__cossimGooglePlacesPromise) return window.__cossimGooglePlacesPromise;
-  const key = String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
-  if (!key) return Promise.resolve(false);
-  window.__cossimGooglePlacesPromise = new Promise((resolve, reject) => {
+  window.__cossimGooglePlacesPromise = (async () => {
+    let key = String(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
+    if (!key) {
+      const response = await fetch("/api/google-maps-config", { cache: "no-store" });
+      if (response.ok) key = String((await response.json())?.apiKey || "").trim();
+    }
+    if (!key) return false;
+    return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
     script.async = true;
@@ -19,7 +24,8 @@ const loadGooglePlaces = () => {
     script.onload = () => resolve(true);
     script.onerror = () => reject(new Error("Google Places could not be loaded."));
     document.head.appendChild(script);
-  });
+    });
+  })();
   return window.__cossimGooglePlacesPromise;
 };
 
@@ -72,15 +78,18 @@ const AddCenterModal = ({ show, onClose, onSubmit, isLoading, isEdit = false, in
   useEffect(() => {
     if (!show || !addressRef.current) return;
     let active = true;
-    let listener;
+    const listeners = [];
     loadGooglePlaces().then((placesAvailable) => {
-      if (!placesAvailable || !active || !addressRef.current) return;
+      if (!placesAvailable || !active || !addressRef.current) {
+        if (active) setPlacesError("Google Places is not configured. Add a Maps API key before saving a location.");
+        return;
+      }
+
       const autocomplete = new window.google.maps.places.Autocomplete(addressRef.current, {
         componentRestrictions: { country: "ke" },
-        fields: ["address_components", "formatted_address", "geometry", "name"],
-        types: ["geocode"],
+        fields: ["address_components", "formatted_address", "geometry", "name", "place_id"],
       });
-      listener = autocomplete.addListener("place_changed", () => {
+      listeners.push(autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace();
         if (!place.geometry?.location) return setPlacesError("Choose an address from the Google suggestions.");
         const county = placePart(place, "administrative_area_level_1");
@@ -88,17 +97,19 @@ const AddCenterModal = ({ show, onClose, onSubmit, isLoading, isEdit = false, in
         const city = cities.find((item) => String(item.CityName || item).toLowerCase() === county.toLowerCase());
         setForm((value) => ({ ...value, AddressLine1: place.formatted_address || place.name, Latitude: place.geometry.location.lat(), Longitude: place.geometry.location.lng(), CityCode: city?.CityCode || value.CityCode, Region: value.Region || region }));
         setPlacesError("");
-        setErrors((value) => ({ ...value, AddressLine1: "" }));
-      });
-    }).catch(() => active && setPlacesError(""));
+        setErrors((value) => ({ ...value, AddressLine1: "", Location: "" }));
+      }));
+    }).catch(() => active && setPlacesError("Google Places could not be loaded. Check the Maps API configuration."));
     return () => {
       active = false;
-      if (listener) window.google?.maps?.event?.removeListener(listener);
+      listeners.forEach((listener) => window.google?.maps?.event?.removeListener(listener));
     };
   }, [show, cities]);
 
   const change = ({ target: { name, value } }) => {
-    setForm((current) => ({ ...current, [name]: value }));
+    setForm((current) => name === "AddressLine1"
+      ? { ...current, AddressLine1: value, Latitude: null, Longitude: null }
+      : { ...current, [name]: value });
     setErrors((current) => ({ ...current, [name]: "" }));
   };
 
@@ -109,6 +120,8 @@ const AddCenterModal = ({ show, onClose, onSubmit, isLoading, isEdit = false, in
     if (!form.Region.trim()) next.Region = "Mapped region is required";
     if (!form.ContactPhone.trim()) next.ContactPhone = "Phone number is required";
     if (!/^\S+@\S+\.\S+$/.test(form.ContactEmail)) next.ContactEmail = "Enter a valid email address";
+    if (!form.AddressLine1.trim()) next.AddressLine1 = "Select the distribution centre from Google Places";
+    if (form.Latitude === null || form.Longitude === null || !Number.isFinite(Number(form.Latitude)) || !Number.isFinite(Number(form.Longitude))) next.Location = "Choose a building or place from the Google suggestions";
     if (!form.DistributionCenterTypeID) next.DistributionCenterTypeID = "Select a location type";
     setErrors(next);
     return !Object.keys(next).length;
@@ -158,10 +171,11 @@ const AddCenterModal = ({ show, onClose, onSubmit, isLoading, isEdit = false, in
             </select><ErrorText>{errors.Region}</ErrorText>
           </div>
           <div className="row"><div className="col-md-6">{field("Contact Phone", "ContactPhone", "+254 700 000 000", "tel")}</div><div className="col-md-6">{field("Contact Email", "ContactEmail", "location@example.com", "email")}</div></div>
-          <div className="mb-3"><label className="form-label">Google Address <span className="text-muted">(Optional)</span></label>
-            <input ref={addressRef} name="AddressLine1" value={form.AddressLine1} onChange={change} className="form-control" placeholder="Enter an address manually or select a Google suggestion" autoComplete="off" disabled={disabled} />
+          <div className="mb-3"><label className="form-label">Google Place *</label>
+            <input ref={addressRef} name="AddressLine1" value={form.AddressLine1} onChange={change} className={`form-control ${errors.AddressLine1 || errors.Location ? "is-invalid" : ""}`} placeholder="Search a building, business or address" autoComplete="off" disabled={disabled} />
             <ErrorText>{errors.AddressLine1}</ErrorText>{placesError && <small className="text-danger d-block mt-1">{placesError}</small>}
-            {form.Latitude !== null && form.Longitude !== null && <small className="text-muted">Coordinates: {Number(form.Latitude).toFixed(6)}, {Number(form.Longitude).toFixed(6)}</small>}
+            <ErrorText>{errors.Location}</ErrorText>
+            {form.Latitude !== null && form.Longitude !== null && <small className="text-muted d-block mt-1">Google location selected: {Number(form.Latitude).toFixed(6)}, {Number(form.Longitude).toFixed(6)}</small>}
           </div>
           <div className="mb-2"><label className="form-label d-block">Location Type *</label>
             <div className="d-flex flex-wrap gap-4">

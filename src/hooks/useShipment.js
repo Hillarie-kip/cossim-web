@@ -753,7 +753,18 @@ export const useShipment = (initialParams = {}) => {
 
       const response = await uploadShipmentExcel(formData);
       if (response.Error) {
-        throw new Error(response.Message || 'Failed to upload excel');
+        const issues = Array.isArray(response.Issues) ? response.Issues : [];
+        const failedRows = Array.isArray(response.Results)
+          ? response.Results.filter((result) => result?.Error).map((result) => {
+              const rowIssues = Array.isArray(result.Issues)
+                ? result.Issues.flatMap((issue) => Array.isArray(issue?.Issues) ? issue.Issues : [issue?.Message || issue]).filter(Boolean)
+                : [];
+              return `Row ${result.Row || '?'}: ${rowIssues.join(', ') || result.Message || 'Upload failed'}`;
+            })
+          : [];
+        const detail = [...issues, ...failedRows].filter(Boolean).join(' | ');
+        const baseMessage = Array.isArray(response.Message) ? response.Message.join(', ') : response.Message;
+        throw new Error(detail || baseMessage || 'Failed to upload excel');
       } else {
         notify.success('Excel uploaded successfully!');
       }

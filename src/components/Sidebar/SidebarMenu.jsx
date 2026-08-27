@@ -4,6 +4,7 @@ import { Headphones, ChevronRight } from "react-feather";
 import ClientScrollbars from "../ClientScrollbars";
 import SidebarItem from "./SidebarItem";
 import { useAuth } from "@/contexts/AuthContext";
+import MobileFiltersMenuItem from "./MobileFiltersMenuItem";
 
 const SidebarMenu = ({ sidebarData, currentPath }) => {
   const [subOpen, setSubopen] = useState("");
@@ -153,6 +154,10 @@ const SidebarMenu = ({ sidebarData, currentPath }) => {
           <div className="sidebar-inner slimscroll">
             <div id="sidebar-menu" className="sidebar-menu">
               <ul>
+                <li className="submenu-open mobile-sidebar-filter-section">
+                  <h6 className="submenu-hdr">TASK FILTERS</h6>
+                  <ul><MobileFiltersMenuItem onOpen={closeMobileSidebar} /></ul>
+                </li>
                 {sidebarData.map((mainLabel) => (
                   <li className="submenu-open" key={mainLabel?.label}>
                     <h6 className="submenu-hdr">{mainLabel?.label}</h6>

@@ -24,6 +24,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [uploadError, setUploadError] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
@@ -35,6 +36,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
       setVendorParams({});
       setIsUploading(false);
       setValidationError('');
+      setUploadError('');
     }
   }, [show]);
 
@@ -44,7 +46,15 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (!['xlsx', 'xls'].includes(extension)) {
+        setSelectedFile(null);
+        setUploadError('Please choose an Excel workbook in .xlsx or .xls format.');
+        return;
+      }
+      setSelectedFile(file);
+      setUploadError('');
     }
   };
 
@@ -77,7 +87,15 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
       return;
     }
     
-    const vendorCode = showVendorInput ? selectedVendor.value : user?.AssignedVendor?.VendorCode;
+    const vendorCode = showVendorInput
+      ? selectedVendor?.value
+      : (user?.AssignedVendor?.VendorCode || user?.AssignedVendor?.vendorCode || user?.VendorCode || user?.vendorCode);
+
+    if (!vendorCode) {
+      setUploadError('A valid vendor code could not be resolved. Please reselect the vendor.');
+      notify.error('A valid vendor code could not be resolved');
+      return;
+    }
     
     const formData = new FormData();
     formData.append('VendorCode', vendorCode);
@@ -88,11 +106,13 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
     
     try {
       setIsUploading(true);
-      await handleUploadExcel(formData);
+      setUploadError('');
+      const response = await handleUploadExcel(formData);
       onUploadSuccess();
       onClose();
     } catch (error) {
       console.error('Upload excel error:', error);
+      setUploadError(error.message || 'The workbook could not be uploaded.');
     } finally {
       setIsUploading(false);
     }
@@ -138,10 +158,10 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
                   }
                 }}
                 options={Array.isArray(vendors) ? vendors.map(vendor => ({
-                  value: vendor.vendorCode,
-                  label: vendor.vendorName,
+                  value: vendor.VendorCode || vendor.vendorCode,
+                  label: vendor.VendorName || vendor.vendorName || vendor.VendorCode || vendor.vendorCode,
                   vendor: vendor
-                })) : []}
+                })).filter((option) => option.value) : []}
                 placeholder="Search and select vendor..."
                 isClearable
                 isSearchable
@@ -173,9 +193,9 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
               value={selectedDeliveryType}
               onChange={setSelectedDeliveryType}
               options={Array.isArray(deliveryTypes) ? deliveryTypes.map((type) => ({
-                value: type.DeliveryTypeCode,
-                label: type.DeliveryTypeName,
-              })) : []}
+                value: type.DeliveryTypeCode || type.deliveryTypeCode,
+                label: type.DeliveryTypeName || type.deliveryTypeName || type.DeliveryTypeCode || type.deliveryTypeCode,
+              })).filter((option) => option.value) : []}
               placeholder="Select delivery type..."
               isClearable
               isSearchable
@@ -188,10 +208,11 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
               name="selectedSortingCentre"
               value={selectedSortingCentre}
               onChange={setSelectedSortingCentre}
-              options={filterDistributionCentersToAssigned(user, distributionCenters).map((dc) => ({
-                value: dc.DCCode,
-                label: `${dc.DCName} (${dc.DCCode})`,
-              }))}
+              options={filterDistributionCentersToAssigned(user, distributionCenters).map((dc) => {
+                const code = dc.DCCode || dc.dcCode;
+                const name = dc.DCName || dc.dcName || code;
+                return { value: code, label: `${name} (${code})` };
+              }).filter((option) => option.value)}
               placeholder="Select destination sorting centre..."
               isClearable
               isSearchable
@@ -217,6 +238,8 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
               </label>
             </div>
           </Form.Group>
+
+          {uploadError && <div className="alert alert-danger py-2" role="alert">{uploadError}</div>}
 
           <div className="d-flex justify-content-end mt-4">
             <Button variant="secondary" onClick={onClose} className="me-2">
