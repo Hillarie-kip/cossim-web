@@ -652,7 +652,7 @@ const Header = () => {
         aria-controls={isAdminView ? "header-global-filters" : undefined}
       >
         {isAdminView
-          ? <FeatherIcon icon="filter" size={25} />
+          ? <FeatherIcon icon={globalFiltersVisible ? "x" : "filter"} size={25} />
           : <span className="bar-icon"><span /><span /><span /></span>}
       </button>
       {/* Header Menu */}
