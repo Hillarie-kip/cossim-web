@@ -8,6 +8,7 @@ import styles from "./MobileTaskNavigation.module.css";
 
 const TASK_ITEMS = [
   { task: "deliver", label: "Deliver", icon: "truck" },
+  { task: "confirmed", label: "Confirmed", icon: "check-circle" },
   { task: "receive", label: "Receive", icon: "download" },
   { task: "dispatch", label: "Dispatch", icon: "send" },
   { task: "reverse-orders", label: "Reverse", icon: "rotate-ccw" },

@@ -635,22 +635,30 @@ const Header = () => {
         </Link>
       </div>
       {/* /Logo */}
-      <Link
+      <button
         id="mobile_btn"
         className="mobile_btn"
-        to="#"
-        onClick={sidebarOverlay}
+        type="button"
+        onClick={() => {
+          if (!isAdminView) {
+            sidebarOverlay();
+            return;
+          }
+          setGlobalFiltersVisible((visible) => !visible);
+          setDateRangeOpen(false);
+        }}
+        aria-label={isAdminView ? (globalFiltersVisible ? "Hide task filters" : "Show task filters") : "Open navigation"}
+        aria-expanded={isAdminView ? globalFiltersVisible : undefined}
+        aria-controls={isAdminView ? "header-global-filters" : undefined}
       >
-        <span className="bar-icon">
-          <span />
-          <span />
-          <span />
-        </span>
-      </Link>
+        {isAdminView
+          ? <FeatherIcon icon="filter" size={25} />
+          : <span className="bar-icon"><span /><span /><span /></span>}
+      </button>
       {/* Header Menu */}
       <ul className="nav user-menu">
         {isAdminView && (
-          <li className={`nav-item d-flex ${styles.globalFilterArea}`}>
+          <li className={`nav-item d-flex mobile-global-filter-host ${styles.globalFilterArea}`}>
             <button
               type="button"
               className={`${styles.filterToggle} ${globalFiltersVisible ? styles.filterToggleActive : ""}`}

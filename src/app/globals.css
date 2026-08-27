@@ -9,6 +9,34 @@ body {
 }
 
 @media (max-width: 991.98px) {
+  #mobile_btn.mobile_btn {
+    z-index: 1100;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  /* The theme hides the desktop user-menu on mobile. Keep only the global
+     filter panel in the render tree so the header filter button can toggle it. */
+  .header > .user-menu.nav {
+    display: contents !important;
+  }
+  .header > .user-menu.nav > li {
+    display: none !important;
+  }
+  .header > .user-menu.nav > li.mobile-global-filter-host {
+    display: contents !important;
+  }
+  .mobile-global-filter-host > button {
+    display: none !important;
+  }
+
   .mobile-task-page-wrapper {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }

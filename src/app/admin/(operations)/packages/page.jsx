@@ -3702,7 +3702,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
         @media (max-width: 767.98px) {
           .packages-mobile-hidden-header { display: none !important; }
-          .packages-task-toolbar { align-items: stretch; flex-direction: column; padding-right: 0; }
+          .packages-task-toolbar {
+            min-height: 0;
+            align-items: stretch;
+            flex-direction: column;
+            gap: 0;
+            padding: 0;
+            border-bottom: 0;
+          }
           .packages-task-tabs { display: none; }
           .packages-selection-actions {
             position: sticky;
