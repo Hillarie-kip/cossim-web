@@ -9,7 +9,7 @@
     box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.09); backdrop-filter: blur(12px);
   }
   .item {
-    display: flex; min-width: 0; min-height: 52px; flex-direction: column;
+    position: relative; display: flex; min-width: 0; min-height: 52px; flex-direction: column;
     align-items: center; justify-content: center; gap: 3px; padding: 4px 1px; border: 0; border-radius: 9px;
     background: transparent; color: #667085; font: inherit; font-size: clamp(8px, 2.35vw, 10px);
     font-weight: 600; line-height: 1; text-decoration: none;
@@ -18,4 +18,11 @@
   .item span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item:active { background: #fff3eb; }
   .active { background: #fff3eb; color: #f05a00; }
+  .badge {
+    position: absolute; top: 1px; left: calc(50% + 8px); z-index: 1;
+    display: inline-flex; min-width: 17px; height: 17px; align-items: center; justify-content: center;
+    padding: 0 4px; overflow: visible; border: 2px solid #fff; border-radius: 999px;
+    background: #ff5a00; color: #fff; font-size: 8px; font-weight: 700; line-height: 1;
+  }
+  .active .badge { border-color: #fff3eb; }
 }

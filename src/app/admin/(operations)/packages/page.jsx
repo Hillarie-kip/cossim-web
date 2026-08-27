@@ -719,6 +719,11 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   }, [vendorCode, fromDCCode, toDCCode, onlyActive, startDate, endDate, distributionCenterList, shipmentScopeDCCodes, clearShipmentOrder]);
 
   const taskCounts = parentTaskCounts;
+  useEffect(() => {
+    const counts = { ...parentTaskCounts };
+    window.localStorage.setItem("cossim-task-navigation-counts", JSON.stringify(counts));
+    window.dispatchEvent(new CustomEvent("cossim:task-counts-updated", { detail: counts }));
+  }, [parentTaskCounts]);
   const taskOrders = useMemo(
     () => [...shipmentOrderList].sort((a, b) => {
         const slaDifference = getOrderSlaState(a).priority - getOrderSlaState(b).priority;
@@ -2742,7 +2747,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <Printer className="me-2 iconsize" />{isGenerating ? "Preparing..." : "Print Stickers"}
                   </button>}
                   {selectedRowKeys.length === 0 && <button type="button" onClick={() => setShowCreatePackage(true)} className="btn btn-outline-primary btn-sm d-flex align-items-center">
-                    <PlusCircle className="me-2 iconsize" />New Order / Package
+                    <PlusCircle className="me-2 iconsize" />New Order
                   </button>}
                   <button type="button" className="btn btn-primary btn-sm d-flex align-items-center" onClick={() => openBatchPanel("confirmed")}>
                     <Layers className="me-2 iconsize" />Pick Orders from Vendor
@@ -2906,7 +2911,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 emptyAction={activeTask === "confirmed" ? (
                   <button type="button" onClick={() => setShowCreatePackage(true)} className="btn btn-primary">
                     <PlusCircle className="me-2" size={16} />
-                    Create New Order / Package
+                    Create New Order
                   </button>
                 ) : null}
               />
@@ -3703,18 +3708,20 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         @media (max-width: 767.98px) {
           .packages-mobile-hidden-header { display: none !important; }
           .packages-task-toolbar {
+            position: sticky;
+            top: 60px;
+            z-index: 25;
             min-height: 0;
             align-items: stretch;
             flex-direction: column;
             gap: 0;
             padding: 0;
             border-bottom: 0;
+            background: #fffaf7;
           }
           .packages-task-tabs { display: none; }
           .packages-selection-actions {
-            position: sticky;
-            top: 60px;
-            z-index: 25;
+            position: static;
             display: flex;
             width: 100%;
             align-items: stretch;
