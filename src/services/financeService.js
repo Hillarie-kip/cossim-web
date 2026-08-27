@@ -57,6 +57,12 @@ export const rejectReconciliationOrder = async (orderNO) => {
     return response.data;
 };
 
+export const clearPaidToVendor = async (orderNOs) => {
+    const response = await api.post(apiRoutes.finance.clearPaidToVendor, { orderNOs });
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to clear orders paid directly to vendor');
+    return response.data;
+};
+
 /**
  * Finance Service
  * Handles all finance-related API calls

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { importDeliveredOrderPayments } from "@/services/shipmentService";
-import { getReconciliationBatches, getReconciliationTransactions, getReconciliationWorkspace, matchOrderReceipts, rejectReconciliationOrder, searchPaybillReceipts } from "@/services/financeService";
+import { clearPaidToVendor, getReconciliationBatches, getReconciliationTransactions, getReconciliationWorkspace, matchOrderReceipts, rejectReconciliationOrder, searchPaybillReceipts } from "@/services/financeService";
 import notify from "@/lib/toast";
 
 const money = (value) => Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -17,10 +17,12 @@ function OrderReconciliation({ refreshKey }) {
   const [selectedReceipts, setSelectedReceipts] = useState({});
   const [loading, setLoading] = useState(true);
   const [busyOrder, setBusyOrder] = useState("");
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const [clearing, setClearing] = useState(false);
 
   const load = useCallback(async (value = "") => {
     setLoading(true);
-    try { const response = await getReconciliationWorkspace(value); setRows(response.Data || []); }
+    try { const response = await getReconciliationWorkspace(value); setRows(response.Data || []); setSelectedOrders([]); }
     catch (error) { notify.error(error.message); }
     finally { setLoading(false); }
   }, []);
@@ -47,12 +49,21 @@ function OrderReconciliation({ refreshKey }) {
     catch (error) { notify.error(error.message); }
     finally { setBusyOrder(""); }
   };
+  const toggleOrder = (orderNO, checked) => setSelectedOrders((old) => checked ? [...new Set([...old, orderNO])] : old.filter((value) => value !== orderNO));
+  const clearDirectPayments = async () => {
+    if (!selectedOrders.length || !window.confirm(`Clear ${selectedOrders.length} selected order(s) as paid directly to the vendor? This marks them complete and removes them from statement reconciliation.`)) return;
+    setClearing(true);
+    try { const response = await clearPaidToVendor(selectedOrders); notify.success(response.Message); await load(search); }
+    catch (error) { notify.error(error.message); }
+    finally { setClearing(false); }
+  };
 
   return <>
-    <form className="row g-2 mb-3" onSubmit={(event) => { event.preventDefault(); load(search); }}><div className="col"><input className="form-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, receiver name, receiver phone, or vendor" /></div><div className="col-auto"><button className="btn btn-primary">Search orders</button></div></form>
-    <div className="table-responsive"><table className="table align-middle"><thead><tr><th>Order</th><th>Order receiver</th><th>Order amounts</th><th style={{ minWidth: 360 }}>Statement payments / M-Pesa payer</th><th style={{ minWidth: 240 }}>Find another receipt</th></tr></thead><tbody>
-      {!loading && !rows.length && <tr><td colSpan="5" className="text-center text-muted py-5">No delivered COD orders found.</td></tr>}
+    <form className="row g-2 mb-3" onSubmit={(event) => { event.preventDefault(); load(search); }}><div className="col"><input className="form-control" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order, receiver name, receiver phone, or vendor" /></div><div className="col-auto"><button className="btn btn-primary">Search orders</button></div><div className="col-auto"><button className="btn btn-success" type="button" disabled={!selectedOrders.length || clearing} onClick={clearDirectPayments}>{clearing ? "Clearing..." : `Clear paid to vendor (${selectedOrders.length})`}</button></div></form>
+    <div className="table-responsive"><table className="table align-middle"><thead><tr><th className="text-center">Paid to vendor</th><th>Order</th><th>Order receiver</th><th>Order amounts</th><th style={{ minWidth: 360 }}>Statement payments / M-Pesa payer</th><th style={{ minWidth: 240 }}>Find another receipt</th></tr></thead><tbody>
+      {!loading && !rows.length && <tr><td colSpan="6" className="text-center text-muted py-5">No delivered COD orders found.</td></tr>}
       {rows.map((order) => { const results = receiptResults[order.orderNO] || order.suggestions || []; const chosen = selectedReceipts[order.orderNO] || []; return <tr key={order.orderNO}>
+        <td className="text-center"><input type="checkbox" className="form-check-input" checked={selectedOrders.includes(order.orderNO)} onChange={(event) => toggleOrder(order.orderNO, event.target.checked)} aria-label={`Mark ${order.orderNO} as paid directly to vendor`} /></td>
         <td><strong>{order.orderNO}</strong><small className="d-block text-muted">{order.vendorCode}</small></td>
         <td><strong className="d-block">{order.receiverName || "Name not recorded"}</strong><small className="d-block text-muted">{order.receiverPhone || "Phone not recorded"}</small></td>
         <td><span className="d-block">Order: <strong>KES {money(order.orderAmount)}</strong></span><small className="d-block text-success">Matched: KES {money(order.verifiedAmount)}</small><small className="d-block text-danger">Outstanding: KES {money(order.outstandingAmount)}</small></td>

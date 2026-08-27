@@ -93,6 +93,7 @@ const apiRoutes = {
     searchPaybillReceipts: `${API_BASE}/api/Finance/SearchPaybillReceipts`,
     matchOrderReceipts: `${API_BASE}/api/Finance/MatchOrderReceipts`,
     rejectReconciliationOrder: `${API_BASE}/api/Finance/RejectReconciliationOrder`,
+    clearPaidToVendor: `${API_BASE}/api/Finance/ClearPaidToVendor`,
     getSettlements: `${API_BASE}/api/Finance/GetSettlements`,
     getSettlementDetail: `${API_BASE}/api/Finance/GetSettlementDetail`,
     createSettlementRequest: `${API_BASE}/api/Finance/PostSettlementRequest`,
