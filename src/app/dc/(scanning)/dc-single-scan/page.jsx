@@ -5,6 +5,7 @@ import { Maximize, Package, CheckCircle, XCircle, Clock, User, MapPin, RotateCcw
 import SSRSelect from "@/components/SSRSelect";
 import { useShipment } from "@/hooks/useShipment";
 import DCSwitcher from "@/components/DCSwitcher";
+import CameraScanInput from "@/components/CameraScanInput";
 
 export default function DCSingleScan() {
   const inputRef = useRef(null);
@@ -160,17 +161,18 @@ export default function DCSingleScan() {
                 <InputGroup.Text className="bg-white border-end-0">
                   <Maximize size={16} className="text-primary" />
                 </InputGroup.Text>
-                <Form.Control
+                <CameraScanInput onScan={setScanInput}>{({ onFocus }) => <Form.Control
                   ref={inputRef}
                   type="text"
                   placeholder="Scan barcode or type order number, then press Enter…"
                   value={scanInput}
                   onChange={(e) => setScanInput(e.target.value)}
+                  onFocus={onFocus}
                   onKeyDown={handleKeyDown}
                   disabled={resolving || !!resolvedOrder}
                   className="border-start-0 py-2"
                   autoComplete="off"
-                />
+                />}</CameraScanInput>
                 <Button
                   variant="primary"
                   onClick={handleScan}

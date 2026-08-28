@@ -8,12 +8,11 @@ import {
   UploadCloud,
   RefreshCw,
   Layers,
-  Eye,
   Search,
   ArrowLeft,
   X,
 } from "feather-icons-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import withReactContent from "sweetalert2-react-content";
 import Swal from "sweetalert2";
@@ -27,6 +26,7 @@ import Datatable from "@/core/pagination/datatable";
 import useShipment from "@/hooks/useShipment";
 import { completeHandoverBatch, editHandoverBatch, getHandoverBatchList, getShipmentOrders, getShipmentOrderItems, getShipmentTimeline, postShipmentHandoverBatch, saveShipmentOrderPayment, uploadHandoverReceipt } from "@/services/shipmentService";
 import OrderExpandedDetails from "@/components/OrderExpandedDetails";
+import CameraScanInput from "@/components/CameraScanInput";
 import useAdmin from "@/hooks/useAdmin";
 import { useVendors } from "@/hooks/useVendors";
 import useStickerDownload from "@/hooks/useStickerDownload";
@@ -402,10 +402,20 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [endDate, setEndDate] = useState(null);
   const searchTimeoutRef = useRef(null);
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [activeTask, setActiveTask] = useState(
     ["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed", "reverseReceive"].includes(initialTask) ? initialTask : "deliver"
   );
+  const [selectedRowKeysByTask, setSelectedRowKeysByTask] = useState({});
+  const selectedRowKeys = selectedRowKeysByTask[activeTask] || [];
+  const setSelectedRowKeys = useCallback((nextSelection) => {
+    setSelectedRowKeysByTask((currentSelections) => {
+      const currentTaskSelection = currentSelections[activeTask] || [];
+      const resolvedSelection = typeof nextSelection === "function"
+        ? nextSelection(currentTaskSelection)
+        : nextSelection;
+      return { ...currentSelections, [activeTask]: resolvedSelection };
+    });
+  }, [activeTask]);
   const [taskModule, setTaskModule] = useState(initialTask === "reverseReceive" ? "reverse" : "forward");
   // Only the forward receive view is batch-based. reverseReceive is backed by
   // GetShipmentOrders (status 401) and must render the returned orders.
@@ -1119,11 +1129,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   };
 
   const openSelectedMobilePanel = () => {
-    if (activeTask === "dispatch" && !selectedRowKeys.length) {
-      setMobileConsolidatedOpen(true);
+    if (!selectedRowKeys.length) {
+      if (activeTask === "dispatch") setMobileConsolidatedOpen(true);
+      else if (isReceiveTask) setReceiveBatch({});
+      else if (activeTask === "confirmed") openBatchPanel("confirmed");
+      else if (activeTask === "reversed") openBatchPanel("reversed");
+      else if (activeTask === "forwardReverse") openBatchPanel("forwardReverse");
       return;
     }
-    if (!selectedRowKeys.length) return;
     if (isReceiveTask) {
       openReceivePanels(inboundBatches.filter((batch) => selectedRowKeys.includes(batch.HandoverCode)));
       return;
@@ -1131,11 +1144,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (activeTask === "confirmed") return openBatchPanel("confirmed");
     if (activeTask === "reversed") return openBatchPanel("reversed");
     if (activeTask === "forwardReverse") return openBatchPanel("forwardReverse");
-    if (activeTask === "dispatch" && selectedOrdersForActions.length === 1) {
-      setDetailOrder(selectedOrdersForActions[0]);
-      setMobileDetailOpen(true);
-      return;
-    }
+    if (activeTask === "dispatch") return handleConsolidate();
+    if (activeTask === "deliver") return openDeliveryActionChooser();
     if (selectedOrdersForActions.length === 1) {
       setDetailOrder(selectedOrdersForActions[0]);
       setMobileDetailOpen(true);
@@ -1733,6 +1743,29 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         await updateSelectedTaskOrders(orders, () => ({ statusID: PACKAGE_STATUSES.HOLD_FOR_DC_DC_DISPATCH.orderStatusID, notes: `Rerouted to ${reroute.dcLabel} via ${reroute.courierLabel}`, extra: { dcCode: reroute.dcCode, riderCode: reroute.courierCode } }));
       }
     } catch (error) { notify.error(error.message || "The task could not be completed"); }
+  };
+
+  const openDeliveryActionChooser = async () => {
+    const options = allSelectedOrdersAssigned
+      ? [
+        { value: "reassign", label: "Re-assign", icon: "feather-refresh-cw" },
+        { value: "unassign", label: "Unassign", icon: "feather-user-x" },
+        { value: "complete", label: "Complete", icon: "feather-check-circle" },
+        { value: "lost", label: "Mark Lost", icon: "feather-alert-triangle" },
+      ]
+      : [
+        { value: "pus", label: "Delivery", icon: "feather-map-pin" },
+        { value: "rider", label: "Assign Rider", icon: "feather-truck" },
+        ...(!selectionHasThirdAttempt ? [{ value: "schedule", label: "Schedule", icon: "feather-calendar" }] : []),
+        { value: "reverse", label: "Reverse", icon: "feather-rotate-ccw" },
+        { value: "reroute", label: "Reroute", icon: "feather-navigation" },
+        { value: "lost", label: "Mark Lost", icon: "feather-alert-triangle" },
+      ];
+    const selectedAction = await chooseTaskOption({
+      title: `Choose action for ${selectedOrdersForActions.length} selected order${selectedOrdersForActions.length === 1 ? "" : "s"}`,
+      options,
+    });
+    if (selectedAction) await handleDeliveryAction(selectedAction);
   };
 
   const handleBatchPanelScan = (event) => {
@@ -2688,7 +2721,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   clearError();
                   setActiveTask(key);
                   persistActiveTask(key);
-                  setSelectedRowKeys([]);
                   setDetailOrder(null);
                   setBatchPanelMode("");
                   setBatchPanelStage("consolidate");
@@ -2932,8 +2964,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <section>
                     <h6>Scan packages</h6>
                     <p className="text-muted small">{receiveBatch.IsMultiBatch ? "Review and manually confirm packages from the selected handovers." : receiveBatch.HandoverCode ? "Only package numbers are shown while receiving." : "Scan a batch code or scan/enter individual package IDs for blind receipt."}</p>
-                    <form className="d-flex gap-2 mb-3" onSubmit={handleReceiveScan}>
-                      <input className="form-control" value={receiveScan} onChange={(event) => setReceiveScan(event.target.value)} placeholder={receiveBatch.HandoverCode ? "Scan or enter package number" : "Scan batch code or package ID"} autoFocus />
+                    <form className="d-flex align-items-start gap-2 mb-3" onSubmit={handleReceiveScan}>
+                      <CameraScanInput onScan={setReceiveScan}>{({ onFocus }) => <input className="form-control" value={receiveScan} onChange={(event) => setReceiveScan(event.target.value)} onFocus={onFocus} placeholder={receiveBatch.HandoverCode ? "Scan or enter package number" : "Scan batch code or package ID"} autoFocus />}</CameraScanInput>
                       <button className="btn btn-primary" type="submit" disabled={!receiveScan.trim()}>Scan</button>
                     </form>
                     {receiveItemsLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : (
@@ -2985,9 +3017,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </> : <div className="text-center py-5 text-muted"><Layers size={28} className="mb-2" /><p className="mb-0">No consolidated batches awaiting action.</p></div>}
               </div>
             </aside>}
-            {((activeTask === "dispatch") || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={activeTask === "dispatch" ? (selectedRowKeys.length ? "Open details view" : "Open consolidated orders") : `Open actions for ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}`}>
-              {activeTask === "dispatch" && selectedRowKeys.length ? <Eye size={20} /> : <Layers size={20} />}
-              <span>{activeTask === "dispatch" ? (selectedRowKeys.length ? "Details View" : "Consolidated Orders") : `${selectedRowKeys.length} selected`}</span>
+            {(["confirmed", "dispatch", "receive", "forwardReverse", "reversed"].includes(activeTask) || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={selectedRowKeys.length ? `${activeTask === "dispatch" ? "Consolidate" : "Open actions for"} ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}` : `Open ${activeTask} action`}>
+              <Layers size={20} />
+              <span>{selectedRowKeys.length
+                ? (activeTask === "dispatch" ? `Consolidate (${selectedRowKeys.length})` : `${selectedRowKeys.length} selected`)
+                : activeTask === "dispatch" ? "Consolidated Orders"
+                  : isReceiveTask ? "Receive & Scan"
+                    : activeTask === "confirmed" ? "Pick Orders"
+                      : activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns"
+                        : "Open Action"}</span>
             </button>}
             {batchPanelMode && <aside className="packages-detail-panel is-open" style={{ width: detailPanelWidth }} aria-label={`${batchPanelMode} batch`}>
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
@@ -3008,7 +3046,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 {batchPanelStage === "consolidate" && <section>
                   <h6>{batchPanelMode === "confirmed" ? "Pick and scan packages" : "Scan selected packages"}</h6>
                   {batchPanelMode === "confirmed" && <div className="d-flex align-items-start justify-content-between gap-2 mb-2"><p className="text-muted small mb-0">Scans are saved on this device until the pick is completed.</p>{batchScannedKeys.length > 0 && <button type="button" className="btn btn-link btn-sm text-danger p-0 flex-shrink-0" onClick={() => { window.localStorage.removeItem(pickScanStorageKey); setBatchPanelOrders([]); setBatchScannedKeys([]); }}>Clear saved scans</button>}</div>}
-                  <form className="d-flex gap-2 mb-3" onSubmit={handleBatchPanelScan}><input className="form-control" value={batchScan} onChange={(event) => setBatchScan(event.target.value)} placeholder="Scan or enter package number" /><button type="submit" className="btn btn-primary" disabled={!batchScan.trim()}>Scan</button></form>
+                  <form className="d-flex align-items-start gap-2 mb-3" onSubmit={handleBatchPanelScan}><CameraScanInput onScan={setBatchScan}>{({ onFocus }) => <input className="form-control" value={batchScan} onChange={(event) => setBatchScan(event.target.value)} onFocus={onFocus} placeholder="Scan or enter package number" />}</CameraScanInput><button type="submit" className="btn btn-primary" disabled={!batchScan.trim()}>Scan</button></form>
                   {batchPanelMode === "confirmed" && batchPanelOrders.length > 0 && <button type="button" className="btn btn-outline-primary w-100 mb-3" onClick={() => setBatchScannedKeys(batchPanelOrders.map((order) => order.OrderNO))}>Confirm All Manually</button>}
                   <div className="list-group mb-3">{batchPanelOrders.map((order) => {
                     const confirmed = batchScannedKeys.includes(order.OrderNO);
@@ -3721,14 +3759,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           }
           .packages-task-tabs { display: none; }
           .packages-selection-actions {
-            position: static;
-            display: flex;
-            width: 100%;
-            align-items: stretch;
-            padding: 10px 12px;
-            border-bottom: 1px solid #ffd8bf;
-            background: #fffaf7;
-            box-shadow: 0 4px 10px rgba(16, 24, 40, .06);
+            display: none;
           }
           .packages-selection-actions > div { width: 100%; justify-content: flex-start !important; overflow-x: auto; }
           .packages-selection-actions .btn { min-height: 40px; flex: 0 0 auto; white-space: nowrap; }

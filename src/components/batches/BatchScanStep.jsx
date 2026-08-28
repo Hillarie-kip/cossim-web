@@ -17,6 +17,7 @@ import {
   ArrowRight,
 } from "feather-icons-react";
 import notify from "@/lib/toast";
+import CameraScanInput from "@/components/CameraScanInput";
 import { Badge, Button, InputGroup, Form } from "react-bootstrap";
 import { useShipment } from "@/hooks/useShipment";
 import styles from "./BatchScanStep.module.scss";
@@ -334,17 +335,18 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
 
           <div className={styles.scannerBody}>
             <InputGroup className={styles.scanInput}>
-              <Form.Control
+              <CameraScanInput onScan={setScanInput}>{({ onFocus }) => <Form.Control
                 ref={inputRef}
                 type="text"
                 placeholder="Scan or enter order number"
                 value={scanInput}
                 onChange={handleScanInputChange}
+                onFocus={onFocus}
                 onKeyDown={handleKeyDown}
                 disabled={processing}
                 autoComplete="off"
                 aria-label="Order number"
-              />
+              />}</CameraScanInput>
               {scanInput && (
                 <Button
                   variant="outline-secondary"

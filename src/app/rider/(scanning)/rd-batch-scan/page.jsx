@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import CameraScanInput from "@/components/CameraScanInput";
 import {
   Card,
   Row,
@@ -550,17 +551,18 @@ export default function RiderBatchScan() {
 
               <Card.Body className="p-4">
                 <InputGroup>
-                  <Form.Control
+                  <CameraScanInput onScan={setScanInput}>{({ onFocus }) => <Form.Control
                     ref={inputRef}
                     type="text"
                     placeholder="Aim scanner or type order number…"
                     value={scanInput}
                     onChange={handleScanInputChange}
+                    onFocus={onFocus}
                     onKeyDown={handleKeyDown}
                     disabled={processing}
                     autoComplete="off"
                     className="py-2"
-                  />
+                  />}</CameraScanInput>
 
                   <Button
                     variant="primary"

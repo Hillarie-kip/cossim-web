@@ -49,6 +49,7 @@
     "@react-latest-ui/react-sticky-notes": "^0.2.6",
     "@reduxjs/toolkit": "^2.8.2",
     "@types/react-slick": "^0.23.13",
+    "@zxing/browser": "^0.2.1",
     "antd": "^6.3.7",
     "apexcharts": "^5.3.2",
     "bootstrap": "^5.3.7",

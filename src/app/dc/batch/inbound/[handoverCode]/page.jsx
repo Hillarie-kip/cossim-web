@@ -8,6 +8,7 @@ import DCSwitcher from "@/components/DCSwitcher";
 import { ReceiveInboundBatchModal } from "@/components/modals";
 import { Alert, Badge, Button, Card, Spinner } from "react-bootstrap";
 import notify from "@/lib/toast";
+import CameraScanInput from "@/components/CameraScanInput";
 
 const HANDOVER_STATUS_CLOSED = 2;
 
@@ -331,14 +332,15 @@ const InboundBatchDetail = () => {
         </Card.Header>
         <Card.Body>
           {!isClosed && (
-            <form className="d-flex gap-2 mb-3" onSubmit={handleScan}>
-              <input
+            <form className="d-flex align-items-start gap-2 mb-3" onSubmit={handleScan}>
+              <CameraScanInput onScan={setScanInput}>{({ onFocus }) => <input
                 className="form-control"
                 value={scanInput}
                 onChange={(event) => setScanInput(event.target.value)}
+                onFocus={onFocus}
                 placeholder="Scan or enter an order number to confirm receipt"
                 autoFocus
-              />
+              />}</CameraScanInput>
               <Button type="submit" variant="primary" disabled={!scanInput.trim()}>Scan Item</Button>
             </form>
           )}
