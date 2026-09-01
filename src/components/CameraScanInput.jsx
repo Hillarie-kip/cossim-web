@@ -74,6 +74,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
       return;
     }
     setPermissionError("");
+    setEnabled(true);
     if (!navigator.mediaDevices?.getUserMedia) {
       setEnabled(false);
       setPermissionError("Camera access is unavailable. Use HTTPS or open the app on localhost.");
@@ -85,7 +86,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
         video: { facingMode: { ideal: "environment" } },
       });
       stream.getTracks().forEach((track) => track.stop());
-      setEnabled(true);
+      setOpen(true);
     } catch (cameraError) {
       setEnabled(false);
       setPermissionError(cameraError?.name === "NotAllowedError"
@@ -102,7 +103,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
         <Camera size={15} />
         <span>{label}</span>
       </label>
-      {enabled && permissionError && <small className="camera-scan-permission-error" role="alert">{permissionError}</small>}
+      {permissionError && <small className="camera-scan-permission-error" role="alert">{permissionError}</small>}
     </div>
     {open && <div className="camera-scan-backdrop" role="dialog" aria-modal="true" aria-label="Barcode camera scanner">
       <div className="camera-scan-dialog">

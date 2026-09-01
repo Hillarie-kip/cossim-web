@@ -511,7 +511,13 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const currentDCCode = !allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1
     ? selectedGlobalDCCodes[0]
     : (selectedGlobalDCCodes.length || noDCSelected ? "" : assignedDefaultDCCode || "");
-  const inboundDestinationScope = noDCSelected ? "" : shipmentScopeDCCodes || currentDCCode;
+  // The API understands the special __ALL__/__ALL_EXCEPT__ tokens, but the
+  // inbound loader also performs a client-side destination check. Use the
+  // expanded DC codes there so a returned DC-U3 batch is not compared with
+  // the literal "__ALL__" token and discarded.
+  const inboundDestinationScope = noDCSelected
+    ? ""
+    : selectedGlobalDCCodes.join(",") || currentDCCode;
 
   const selectedDetailOrder = selectedRowKeys.length === 1 && Array.isArray(shipmentOrders)
     ? shipmentOrders.find((order) => order.OrderNO === selectedRowKeys[0])
@@ -589,16 +595,17 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         startDate: formatLocalDateOnly(getSlaWindowStart(startDate)),
         endDate: formatLocalDateOnly(endDate),
         IsInBound: 1,
+        // Only completed/active handovers can be received. Filtering this on
+        // the server also prevents a page of draft (StatusID 2) batches from
+        // being returned and then reduced to an empty list in the browser.
+        statusID: 1,
         orderBy: "DateAdded",
         sortDir: "DESC",
       }))).then((responses) => {
       if (!active) return;
-      const selectedDestinations = new Set(destinationDCCodes.map((code) => code.toUpperCase()));
       const uniqueBatches = new Map(responses.flatMap(extractResponseList).map((batch) => [batch.HandoverCode, batch]));
-      const destinationBatches = [...uniqueBatches.values()].filter((batch) => {
-        const destinationCode = batch.ToDCCode || batch.DestinationDCCode || batch.DestinationCode;
-        return Number(batch.StatusID) === 1 && selectedDestinations.has(String(destinationCode || "").toUpperCase());
-      });
+      // Destination authorization and filtering are enforced by the API.
+      const destinationBatches = [...uniqueBatches.values()];
       return Promise.all(destinationBatches.map(async (batch) => {
         try {
           const batchDestinationDC = batch.ToDCCode || batch.DestinationDCCode || batch.DestinationCode;
@@ -669,7 +676,19 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   // Cached responses can briefly expose the full API envelope instead of its
   // Data array. Keep rendering resilient while the fresh request replaces it.
   const apiShipmentOrderList = Array.isArray(shipmentOrders) ? shipmentOrders : [];
-  const shipmentOrderList = apiShipmentOrderList;
+  // OrderNO is the row identity throughout this page. Some API responses can
+  // contain the same order more than once (for example, after joined status
+  // records), which otherwise gives React duplicate keys and duplicated rows.
+  const shipmentOrderList = useMemo(() => {
+    const ordersByNumber = new Map();
+    apiShipmentOrderList.forEach((order) => {
+      const orderNumber = order?.OrderNO;
+      if (!orderNumber || !ordersByNumber.has(orderNumber)) {
+        ordersByNumber.set(orderNumber || order, order);
+      }
+    });
+    return [...ordersByNumber.values()];
+  }, [shipmentOrders]);
   const vendorList = Array.isArray(vendors) ? vendors : [];
   const distributionCenterList = assignedDistributionCenters;
 
