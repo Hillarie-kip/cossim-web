@@ -358,6 +358,7 @@ export const getHandoverBatchList = async (params = {}) => {
         if (params.IsInBound !== undefined) queryParams.append('IsInBound', params.IsInBound);
         if (params.statusID !== undefined && params.statusID !== null) queryParams.append('statusID', params.statusID);
         if (params.statusIDs) queryParams.append('statusIDs', params.statusIDs);
+        if (params.batchType) queryParams.append('batchType', params.batchType);
 
         // Always include required orderBy and sortDir parameters
         queryParams.append('orderBy', params.orderBy || 'HandoverCode');

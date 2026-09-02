@@ -417,9 +417,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     });
   }, [activeTask]);
   const [taskModule, setTaskModule] = useState(initialTask === "reverseReceive" ? "reverse" : "forward");
-  // Only the forward receive view is batch-based. reverseReceive is backed by
-  // GetShipmentOrders (status 401) and must render the returned orders.
-  const isReceiveTask = activeTask === "receive";
+  // Both forward and reverse receipts are handed over as consolidated batches.
+  // Reverse receipts are accepted as status 402 and then appear in Orders to Return.
+  const isReceiveTask = activeTask === "receive" || activeTask === "reverseReceive";
   const [showDashboardBack, setShowDashboardBack] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
@@ -611,9 +611,13 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           const batchDestinationDC = batch.ToDCCode || batch.DestinationDCCode || batch.DestinationCode;
           const itemResponse = await fetchHandoverItems({ handoverCode: batch.HandoverCode, ToDCCode: batchDestinationDC, pageNo: 1, pageSize: 1000 });
           const items = extractResponseList(itemResponse);
-          const isReverse = items.some((item) => [401, 402, 701, 702, 703, 704, 902].includes(Number(item.OrderStatusID)) || /RETURN|REVERSE|DECLINED/i.test(`${item.StatusName || ""}`));
+          const batchType = String(batch.BatchType || "ORDER").trim().toUpperCase();
+          // Completed ORDER and REROUTE handovers are received through the
+          // normal Orders to Receive queue. RETURN batches stay isolated in
+          // Reversals to Receive.
+          const isReverse = batchType === "RETURN";
           const receivedItems = items.filter((item) => [201, 402, 703].includes(Number(item.OrderStatusID)) || /RECEIVED|RETURNED TO VENDOR/i.test(`${item.StatusName || ""}`)).length;
-          return { ...batch, _IsReverse: isReverse, _ReceivedItems: receivedItems, _LoadedItems: items.length };
+          return { ...batch, BatchType: batchType, _IsReverse: isReverse, _ReceivedItems: receivedItems, _LoadedItems: items.length };
         } catch {
           return { ...batch, _IsReverse: false, _ReceivedItems: 0 };
         }
@@ -625,6 +629,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       setParentTaskCounts((current) => ({
         ...current,
         receive: forwardBatches.length,
+        reverseReceive: enrichedBatches.length - forwardBatches.length,
       }));
     }).catch((batchError) => {
       if (active) notify.error(batchError?.message || "Failed to load inbound batches");
@@ -636,7 +641,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   useEffect(() => {
     if (!isReceiveTask) return;
-    const taskBatches = allInboundBatches.filter((batch) => !batch._IsReverse);
+    const taskBatches = allInboundBatches.filter((batch) => activeTask === "reverseReceive" ? batch._IsReverse : !batch._IsReverse);
     setInboundBatches(taskBatches);
     setInboundBatchTotal(taskBatches.length);
   }, [activeTask, allInboundBatches, isReceiveTask]);
@@ -649,8 +654,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
     setOutboundBatchesLoading(true);
     try {
-      const response = await getHandoverBatchList({ pageNo, pageSize: outboundBatchPageSize, search: debouncedOutboundBatchSearch || undefined, statusID: 2, FromDCCode: shipmentScopeDCCodes, IsInBound: 0, startDate: formatLocalDateOnly(getSlaWindowStart(startDate)), endDate: formatLocalDateOnly(endDate), orderBy: "DateAdded", sortDir: "DESC" });
-      const batches = extractResponseList(response).filter((batch) => Number(batch.StatusID) === 2);
+      const expectedBatchType = activeTask === "forwardReverse" ? "RETURN" : activeTask === "deliver" ? "REROUTE" : "ORDER";
+      const response = await getHandoverBatchList({ pageNo, pageSize: outboundBatchPageSize, search: debouncedOutboundBatchSearch || undefined, statusID: 2, batchType: expectedBatchType, FromDCCode: shipmentScopeDCCodes, IsInBound: 0, startDate: formatLocalDateOnly(getSlaWindowStart(startDate)), endDate: formatLocalDateOnly(endDate), orderBy: "DateAdded", sortDir: "DESC" });
+      const batches = extractResponseList(response).filter((batch) =>
+        Number(batch.StatusID) === 2
+        && String(batch.BatchType || "ORDER").toUpperCase() === expectedBatchType
+      );
       const total = Number(response?.TotalCount ?? response?.totalCount ?? response?.Data?.TotalCount ?? response?.data?.totalCount);
       setOutboundBatches(batches);
       setOutboundBatchTotal(Number.isFinite(total) ? total : batches.length);
@@ -670,7 +679,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   }, [outboundBatchSearch]);
 
   useEffect(() => {
-    if (activeTask === "dispatch") loadOutboundBatches(outboundBatchPage);
+    if (["deliver", "dispatch", "forwardReverse"].includes(activeTask)) loadOutboundBatches(outboundBatchPage);
   }, [activeTask, shipmentScopeDCCodes, outboundBatchPage, outboundBatchPageSize, startDate, endDate, debouncedOutboundBatchSearch]);
 
   // Cached responses can briefly expose the full API envelope instead of its
@@ -732,7 +741,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       backgroundRefresh: false,
     });
 
-    const countTaskTypes = ["deliver", "dispatch", "confirmed", "forwardReverse", "reversed", "reverseReceive"];
+    // reverseReceive is counted from inbound consolidated batches above, not
+    // from the individual status-401 shipment rows.
+    const countTaskTypes = ["deliver", "dispatch", "confirmed", "forwardReverse", "reversed"];
     Promise.allSettled(countTaskTypes.map((taskType) => getShipmentOrders(taskCountParams(taskType)))).then((results) => {
       if (!active) return;
       setParentTaskCounts((current) => {
@@ -772,13 +783,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const statusName = String(order.StatusName || order.OrderStatusName || "").toUpperCase();
     return statusID === 306 || statusName.includes("3RD ATTEMPT") || statusName.includes("THIRD ATTEMPT");
   });
-  const selectedReturnsAreAtOrigin = ["reversed", "forwardreverse"].includes(String(activeTask || "").toLowerCase()) && selectedOrdersForActions.length > 0
-    && selectedOrdersForActions.every((order) => {
-      const normalizeDC = (value) => String(value || "").trim().toUpperCase();
-      const originCode = normalizeDC(order.OriginDCCode);
-      const destinationCode = normalizeDC(order.DestinationDCCode);
-      return Boolean(originCode && destinationCode && originCode === destinationCode);
-    });
   const allSelectedOrdersAssigned = selectedOrdersForActions.length > 0
     && selectedOrdersForActions.every(isAssignedDeliveryOrder);
 
@@ -830,7 +834,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     [distributionCenters]
   );
 
-  const chooseActionDC = async (actionLabel = "post this action") => {
+  const chooseActionDC = async (actionLabel = "post this action", preferredDCCode = "") => {
     if (!allDCsSelected && !allExceptSelected && selectedGlobalDCCodes.length === 1) return selectedGlobalDCCodes[0];
     if (!selectedGlobalDCCodes.length) return assignedDefaultDCCode || "";
 
@@ -843,6 +847,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       const option = dcOptions.find((item) => item.value === code);
       return [code, option?.label || code];
     });
+    const selectedOrderLocations = [...new Set(selectedOrdersForActions
+      .map((order) => order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.OriginDCCode || order.DestinationDCCode)
+      .filter(Boolean))];
+    const requestedDefaultDCCode = preferredDCCode || (selectedOrderLocations.length === 1 ? selectedOrderLocations[0] : "");
+    const defaultOrderDCCode = requestedDefaultDCCode && actionDCCodes.includes(requestedDefaultDCCode)
+      ? requestedDefaultDCCode
+      : "";
+    const defaultOrderDCLabel = selectedOptions.find(([code]) => code === defaultOrderDCCode)?.[1] || "";
     const optionLookup = new Map(selectedOptions.flatMap(([code, label]) => [
       [code.toLowerCase(), code],
       [label.toLowerCase(), code],
@@ -851,6 +863,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       title: "Choose the posting DC",
       text: `Select the distribution center that will ${actionLabel}. This choice applies only to this submission.`,
       input: "text",
+      inputValue: defaultOrderDCLabel,
       inputPlaceholder: "Search distribution centers",
       showCancelButton: true,
       confirmButtonText: "Continue",
@@ -1081,15 +1094,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   };
 
   const openBatchPanel = (mode) => {
-    const selectedVendorCode = selectedOrdersForActions[0]?.VendorCode;
-    const selectedVendorCodes = [...new Set(selectedOrdersForActions.map((order) => order.VendorCode).filter(Boolean))];
-    if (mode === "reversed" && selectedVendorCodes.length > 1) {
-      notify.error("Select orders from one vendor at a time for a return.");
-      return;
-    }
-    const selectedVendor = mode === "reversed" && selectedVendorCode
-      ? vendorOptions.find((option) => option.value === selectedVendorCode) || { value: selectedVendorCode, label: selectedOrdersForActions[0]?.VendorName || selectedVendorCode }
-      : null;
     let restoredOrders = [];
     let restoredScannedKeys = [];
     if (mode === "confirmed" && typeof window !== "undefined") {
@@ -1108,10 +1112,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setExistingBatchCode("");
     setExistingBatchEditOnly(false);
     setBatchPanelOrders(initialOrders);
-    const hqDestination = mode === "forwardReverse"
+    const hqDestination = mode === "forwardReverse" || mode === "reversed"
       ? dcOptions.find((option) => /(^|\b)HQ(\b|$)|HEAD\s*OFFICE/i.test(option.label))
       : null;
-    setBatchDestination(selectedVendor || hqDestination || null);
+    setBatchDestination(hqDestination || null);
     setBatchCourier(null);
     setBatchPanelStage("consolidate");
     setBatchCourierCost("");
@@ -1124,10 +1128,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const handleConsolidate = () => openBatchPanel("dispatch");
 
   const handleDirectReturnToVendor = async () => {
-    if (!selectedReturnsAreAtOrigin) return notify.error("Select return orders whose Current DC is their Origin DC.");
+    if (!selectedOrdersForActions.length) return notify.error("Select at least one order to return.");
+    const ordersWithoutVendor = selectedOrdersForActions.filter((order) => !String(order.VendorCode || "").trim());
+    if (ordersWithoutVendor.length) {
+      return notify.error(`${ordersWithoutVendor.length} selected package${ordersWithoutVendor.length === 1 ? " has" : "s have"} no vendor code. Assign the vendor before returning.`);
+    }
     const { isConfirmed } = await MySwal.fire({
-      title: "Return directly to vendor?",
-      text: `${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} will be marked Returned to Vendor without consolidation.`,
+      title: "Return to vendor?",
+      text: `${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} will be marked Returned to Vendor.`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Return to Vendor",
@@ -1135,12 +1143,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     });
     if (!isConfirmed) return;
     try {
-      const postingDC = selectedOrdersForActions[0].OriginDCCode || selectedOrdersForActions[0].LatestLogDCCode || selectedOrdersForActions[0].CurrentDCCode || selectedOrdersForActions[0].InitialLogDCCode || selectedOrdersForActions[0].DestinationDCCode;
       await updateTaskOrders(selectedOrdersForActions, (order) => ({
-        statusID: PACKAGE_STATUSES.RETURNED_TO_VENDOR.orderStatusID,
-        notes: "Returned directly to vendor from origin DC; consolidation not required",
-        extra: { dcCode: order.OriginDCCode || order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.DestinationDCCode },
-      }), postingDC);
+        statusID: PACKAGE_STATUSES.CLOSED_SUCCESS.orderStatusID,
+        notes: "Return handed to vendor and closed successfully",
+        extra: {
+          dcCode: order.LatestLogDCCode || order.CurrentDCCode || order.OriginDCCode || order.DestinationDCCode,
+          vendorCode: order.VendorCode,
+        },
+      }));
       notify.success(`${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} returned to vendor`);
     } catch (error) {
       notify.error(error.message || "Failed to return the selected packages to vendor");
@@ -1149,10 +1159,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   const openSelectedMobilePanel = () => {
     if (!selectedRowKeys.length) {
-      if (activeTask === "dispatch") setMobileConsolidatedOpen(true);
+      if (activeTask === "dispatch" || activeTask === "deliver") setMobileConsolidatedOpen(true);
       else if (isReceiveTask) setReceiveBatch({});
       else if (activeTask === "confirmed") openBatchPanel("confirmed");
-      else if (activeTask === "reversed") openBatchPanel("reversed");
+      else if (activeTask === "reversed") return;
       else if (activeTask === "forwardReverse") openBatchPanel("forwardReverse");
       return;
     }
@@ -1161,7 +1171,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       return;
     }
     if (activeTask === "confirmed") return openBatchPanel("confirmed");
-    if (activeTask === "reversed") return openBatchPanel("reversed");
+    if (activeTask === "reversed") return handleDirectReturnToVendor();
     if (activeTask === "forwardReverse") return openBatchPanel("forwardReverse");
     if (activeTask === "dispatch") return handleConsolidate();
     if (activeTask === "deliver") return openDeliveryActionChooser();
@@ -1188,7 +1198,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       const orders = items.map((item) => ({ ...item, OrderNO: item.OrderNO })).filter((item) => item.OrderNO);
       setExistingBatchCode(batch.HandoverCode);
       setExistingBatchEditOnly(editOnly);
-      setBatchPanelMode("dispatch");
+      setBatchPanelMode(batch.BatchType === "RETURN" ? "forwardReverse" : batch.BatchType === "REROUTE" ? "reroute" : "dispatch");
       setBatchPanelStage("complete");
       setBatchPanelOrders(orders);
       setExistingBatchOriginalOrders(orders);
@@ -1208,7 +1218,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const actionDCCode = requestedActionDCCode || await chooseActionDC("post this order action");
     if (!actionDCCode) throw new Error("Choose a distribution center to continue.");
     const updates = orders.map((order) => ({ order, ...buildUpdate(order) }));
-    await handleUpdateShipmentStatusBatch(updates.map(({ order, statusID, notes, extra = {} }) => ({ statusID, orderNO: order.OrderNO, notes, dcCode: extra.dcCode || actionDCCode, courierCode: extra.courierCode || extra.riderCode || "" })));
+    await handleUpdateShipmentStatusBatch(updates.map(({ order, statusID, notes, extra = {} }) => ({ statusID, orderNO: order.OrderNO, notes, dcCode: extra.dcCode || actionDCCode, courierCode: extra.courierCode || extra.riderCode || "", vendorCode: extra.vendorCode || order.VendorCode || "" })));
     await loadShipmentOrders({ pageNo: pagination.currentPage });
     setSelectedRowKeys([]);
   };
@@ -1295,7 +1305,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     return selectedValue || result.value || "";
   };
 
-  const chooseSearchableDC = async (orders = [], courierChoices = {}) => {
+  const chooseSearchableDC = async (orders = []) => {
     const { value } = await MySwal.fire({
       title: "Reroute Packages",
       html: (
@@ -1312,12 +1322,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
             {dcOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <small id="task-dc-empty" className="text-muted d-none">No matching distribution centers</small>
-          <label className="form-label fw-semibold text-start mb-0 mt-2" htmlFor="task-courier-search">Courier</label>
-          <input id="task-courier-search" className="swal2-input" placeholder="Search courier name or code" autoComplete="off" />
-          <select id="task-courier-select" className="swal2-select" size="5" aria-label="Courier">
-            {Object.entries(courierChoices).map(([code, name]) => <option key={code} value={code}>{`${name} (${code})`}</option>)}
-          </select>
-          <small id="task-courier-empty" className={`text-muted ${Object.keys(courierChoices).length ? "d-none" : ""}`}>No matching couriers</small>
+          <small className="text-muted text-start">Courier, cost, and parcel documents will be added when the reroute handover is completed.</small>
         </div>
       ),
       showCancelButton: true,
@@ -1345,15 +1350,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           select.addEventListener("change", () => { if (select.selectedOptions[0]) search.value = select.selectedOptions[0].text; });
         };
         connectSearch("task-dc-search", "task-dc-select", "task-dc-empty");
-        connectSearch("task-courier-search", "task-courier-select", "task-courier-empty");
         document.getElementById("task-dc-search")?.focus();
       },
       preConfirm: () => {
         const selectedDC = document.getElementById("task-dc-select")?.selectedOptions?.[0];
-        const selectedCourier = document.getElementById("task-courier-select")?.selectedOptions?.[0];
         if (!selectedDC || selectedDC.hidden) return Swal.showValidationMessage("Search for and select a destination DC");
-        if (!selectedCourier || selectedCourier.hidden) return Swal.showValidationMessage("Search for and select a courier");
-        return { dcCode: selectedDC.value, dcLabel: selectedDC.text, courierCode: selectedCourier.value, courierLabel: selectedCourier.text };
+        return { dcCode: selectedDC.value, dcLabel: selectedDC.text };
       },
     });
     return value || null;
@@ -1577,11 +1579,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (action === "schedule" && selectionHasThirdAttempt) {
       return notify.error("Third-attempt orders cannot be rescheduled.");
     }
-    const actionDCCode = await chooseActionDC("post this delivery action");
-    if (!actionDCCode) return;
+    const actionDCCode = action === "reroute" ? "" : await chooseActionDC("post this delivery action");
+    if (action !== "reroute" && !actionDCCode) return;
     const orders = selectedOrdersForActions;
     const updateSelectedTaskOrders = (selectedOrders, buildUpdate) => updateTaskOrders(selectedOrders, buildUpdate, actionDCCode);
-    const courierChoices = Object.fromEntries((Array.isArray(couriers) ? couriers : []).filter((courier) => courier.IsActive !== false && !courier.IsDeleted).map((courier) => [courier.CourierCode, courier.CourierName || courier.CourierCode]));
     try {
       if (action === "rider" || action === "reassign") {
         const rider = await chooseSearchableRider();
@@ -1757,9 +1758,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         });
         if (value) await updateSelectedTaskOrders(orders, () => ({ statusID: PACKAGE_STATUSES.RETURN_REQUESTED_BY_CUSTOMER.orderStatusID, notes: `Reason code: ${value.reasonCode}; Notes: ${value.notes}` }));
       } else if (action === "reroute") {
-        const reroute = await chooseSearchableDC(orders, courierChoices);
+        const reroute = await chooseSearchableDC(orders);
         if (!reroute) return;
-        await updateSelectedTaskOrders(orders, () => ({ statusID: PACKAGE_STATUSES.HOLD_FOR_DC_DC_DISPATCH.orderStatusID, notes: `Rerouted to ${reroute.dcLabel} via ${reroute.courierLabel}`, extra: { dcCode: reroute.dcCode, riderCode: reroute.courierCode } }));
+        setBatchPanelMode("reroute");
+        setBatchPanelOrders(orders);
+        setBatchDestination({ value: reroute.dcCode, label: reroute.dcLabel });
+        setBatchPanelStage("consolidate");
+        setBatchScannedKeys([]);
+        setBatchScan("");
+        setDetailOrder(null);
       }
     } catch (error) { notify.error(error.message || "The task could not be completed"); }
   };
@@ -1864,15 +1871,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!batchCourierCost || Number(batchCourierCost) <= 0) return notify.error("Enter the courier cost.");
     if (!batchReceipt) return notify.error("Attach the courier receipt.");
     if (batchScannedKeys.length !== batchPanelOrders.length) return notify.error("Scan every selected package before completing the batch.");
-    const actionDCCode = await chooseActionDC("dispatch this batch");
+    const batchCurrentDCCodes = [...new Set(batchPanelOrders.map((order) => order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.OriginDCCode).filter(Boolean))];
+    const actionDCCode = await chooseActionDC("dispatch this batch", batchCurrentDCCodes.length === 1 ? batchCurrentDCCodes[0] : "");
     if (!actionDCCode) return;
     if (batchPanelMode !== "reversed" && actionDCCode === batchDestination.value) return notify.error("The posting DC and destination DC must be different.");
     const { isConfirmed } = await MySwal.fire({
-      title: batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Complete return dispatch?" : "Complete dispatch?",
+      title: batchPanelMode === "reroute" ? "Complete reroute dispatch?" : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Complete return dispatch?" : "Complete dispatch?",
       text: `${batchScannedKeys.length} package${batchScannedKeys.length === 1 ? "" : "s"} will be handed to ${batchCourier.label}.`,
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Confirm Return & Dispatch" : "Confirm Dispatch",
+      confirmButtonText: batchPanelMode === "reroute" ? "Confirm Reroute & Dispatch" : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Confirm Return & Dispatch" : "Confirm Dispatch",
     });
     if (!isConfirmed) return;
     setBatchSubmitting(true);
@@ -1895,12 +1903,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       } else {
       const response = await postShipmentHandoverBatch({
           fromDCCode: actionDCCode,
-          toDCCode: batchPanelMode === "reversed" ? actionDCCode : batchDestination.value,
+          toDCCode: batchDestination.value,
+          statusID: batchPanelMode === "reroute" ? PACKAGE_STATUSES.HOLD_FOR_DC_DC_DISPATCH.orderStatusID : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? 401 : 0,
+          batchType: batchPanelMode === "reroute" ? "REROUTE" : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "RETURN" : "ORDER",
           courierCode: batchCourier.value,
           riderUserCode: "",
           courierCost: Number(batchCourierCost),
           receiptImageID: receiptUpload.ImageID,
-          notes: `${batchPanelMode === "reversed" ? `Reversed orders consolidated for vendor ${batchDestination.label}` : batchPanelMode === "forwardReverse" ? `Past-SLA or declined orders consolidated for return to HQ ${batchDestination.label}` : "Task Management dispatch"}`,
+          notes: `${batchPanelMode === "reroute" ? `Reroute dispatched to ${batchDestination.label}` : batchPanelMode === "reversed" ? `Reversed orders consolidated for vendor ${batchDestination.label}` : batchPanelMode === "forwardReverse" ? `Past-SLA or declined orders consolidated for return to HQ ${batchDestination.label}` : "Task Management dispatch"}`,
           shipmentOrderArray: batchScannedKeys.map((orderNO) => ({ orderNO })),
         });
         if (response?.Error) throw new Error(response.Message || "Failed to create batch");
@@ -1926,7 +1936,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!batchPanelOrders.length || batchScannedKeys.length !== batchPanelOrders.length) {
       return notify.error("Scan every selected package before completing the consolidation.");
     }
-    const actionDCCode = await chooseActionDC("create this consolidation");
+    const batchCurrentDCCodes = [...new Set(batchPanelOrders.map((order) => order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.OriginDCCode).filter(Boolean))];
+    const actionDCCode = await chooseActionDC("create this consolidation", batchCurrentDCCodes.length === 1 ? batchCurrentDCCodes[0] : "");
     if (!actionDCCode) return;
     if (batchPanelMode !== "reversed" && actionDCCode === batchDestination.value) return notify.error("The posting DC and destination DC must be different.");
 
@@ -1943,10 +1954,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     try {
       const response = await postShipmentHandoverBatch({
         fromDCCode: actionDCCode,
-        toDCCode: batchPanelMode === "reversed" ? actionDCCode : batchDestination.value,
+        toDCCode: batchDestination.value,
+        statusID: batchPanelMode === "reroute" ? PACKAGE_STATUSES.HOLD_FOR_DC_DC_DISPATCH.orderStatusID : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? 401 : 0,
+        batchType: batchPanelMode === "reroute" ? "REROUTE" : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "RETURN" : "ORDER",
         courierCode: "",
         riderUserCode: "",
-        notes: batchPanelMode === "reversed"
+        notes: batchPanelMode === "reroute"
+          ? `Orders consolidated for reroute to ${batchDestination.label}; awaiting courier handover`
+          : batchPanelMode === "reversed"
           ? `Reversed orders consolidated for vendor ${batchDestination.label}; awaiting courier handover`
           : batchPanelMode === "forwardReverse"
             ? `Past-SLA or declined orders consolidated for return to HQ ${batchDestination.label}; awaiting courier handover`
@@ -2093,10 +2108,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       setReceiveItems([]);
       setReceivedOrderKeys([]);
       setSelectedRowKeys([]);
-      const refreshed = await getHandoverBatchList({ pageNo: 1, pageSize: 100, DestinationDCCode: toDCCode || currentDCCode, IsInBound: 1, orderBy: "DateAdded", sortDir: "DESC" });
-      const pending = extractResponseList(refreshed).filter((batch) => Number(batch.StatusID) !== 2);
-      setInboundBatches(pending);
-      setInboundBatchTotal(pending.length);
+      const receivedCodes = new Set(batchesToReceive.map((batch) => batch.HandoverCode));
+      setAllInboundBatches((current) => current.filter((batch) => !receivedCodes.has(batch.HandoverCode)));
       return;
     }
     const response = await handleReceiveInboundShipmentBatch(payload);
@@ -2106,10 +2119,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setReceiveItems([]);
     setReceivedOrderKeys([]);
     setSelectedRowKeys([]);
-    const refreshed = await getHandoverBatchList({ pageNo: 1, pageSize: 100, DestinationDCCode: toDCCode || currentDCCode, IsInBound: 1, orderBy: "DateAdded", sortDir: "DESC" });
-    const pending = extractResponseList(refreshed).filter((batch) => Number(batch.StatusID) !== 2);
-    setInboundBatches(pending);
-    setInboundBatchTotal(pending.length);
+    setAllInboundBatches((current) => current.filter((batch) => batch.HandoverCode !== payload.HandoverCode));
   };
 
   const MySwal = withReactContent(Swal);
@@ -2805,9 +2815,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   </button>
                 </div>
               ) : <div className="d-flex align-items-center gap-2 packages-step-actions">
-                <button className={`btn ${selectedReturnsAreAtOrigin ? "btn-outline-danger" : "btn-primary"} btn-sm d-flex align-items-center packages-step-primary`} onClick={() => selectedReturnsAreAtOrigin ? handleDirectReturnToVendor() : activeTask === "reversed" ? openBatchPanel("reversed") : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
+                <button className={`btn ${activeTask === "reversed" ? "btn-outline-danger" : "btn-primary"} btn-sm d-flex align-items-center packages-step-primary`} disabled={activeTask === "reversed" && selectedRowKeys.length === 0} onClick={() => activeTask === "reversed" ? handleDirectReturnToVendor() : activeTask === "forwardReverse" ? openBatchPanel("forwardReverse") : handleConsolidate()}>
                   <Layers className="me-2 iconsize" />
-                  {selectedReturnsAreAtOrigin ? "Return to Vendor" : activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns" : "Consolidate"}
+                  {activeTask === "reversed" ? "Return to Vendor" : activeTask === "forwardReverse" ? "Consolidate Return" : "Consolidate"}
                 </button>
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
@@ -2817,7 +2827,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
                   <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
                 </div>}
-                {activeTask === "reversed" && selectedRowKeys.length > 0 && <button type="button" className="btn btn-outline-danger btn-sm d-flex align-items-center" onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle me-2" />Mark Lost</button>}
+                {(activeTask === "reversed" || activeTask === "forwardReverse") && selectedRowKeys.length > 0 && <button type="button" className="btn btn-outline-danger btn-sm d-flex align-items-center" onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle me-2" />Mark Lost</button>}
               </div>
               }
             </div>
@@ -3006,9 +3016,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </div>
               </> : <div className="packages-detail-empty"><span className="packages-detail-empty-icon" aria-hidden="true">›</span><strong>RECEIVE</strong><small>CLICK A BATCH</small></div>}
             </aside>}
-            {activeTask === "dispatch" && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className={`packages-detail-panel packages-consolidated-panel is-open ${mobileConsolidatedOpen ? "is-mobile-open" : ""}`} style={{ width: detailPanelWidth }} aria-label="Consolidated orders">
+            {(["deliver", "dispatch", "forwardReverse"].includes(activeTask)) && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className={`packages-detail-panel packages-consolidated-panel is-open ${mobileConsolidatedOpen ? "is-mobile-open" : ""}`} style={{ width: detailPanelWidth }} aria-label={activeTask === "deliver" ? "Reroute handovers" : activeTask === "forwardReverse" ? "Consolidated returns" : "Consolidated orders"}>
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
-              <header className="packages-detail-header"><div><small>ORDERS TO DISPATCH</small><h5>Consolidated Orders</h5></div><button type="button" className="packages-mobile-panel-close" onClick={() => setMobileConsolidatedOpen(false)} aria-label="Close consolidated orders"><X size={19} /></button></header>
+              <header className="packages-detail-header"><div><small>{activeTask === "deliver" ? "ORDERS TO DELIVER" : activeTask === "forwardReverse" ? "ORDERS TO REVERSE" : "ORDERS TO DISPATCH"}</small><h5>{activeTask === "deliver" ? "Pending Reroute Handovers" : activeTask === "forwardReverse" ? "Pending Return Handovers" : "Consolidated Orders"}</h5></div><button type="button" className="packages-mobile-panel-close" onClick={() => setMobileConsolidatedOpen(false)} aria-label="Close consolidated handovers"><X size={19} /></button></header>
               <div className="packages-detail-body" style={{ padding: "12px" }}>
                 <div className="input-group input-group-sm mb-3">
                   <span className="input-group-text" aria-hidden="true"><Search size={15} /></span>
@@ -3036,26 +3046,28 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </> : <div className="text-center py-5 text-muted"><Layers size={28} className="mb-2" /><p className="mb-0">No consolidated batches awaiting action.</p></div>}
               </div>
             </aside>}
-            {(["confirmed", "dispatch", "receive", "forwardReverse", "reversed"].includes(activeTask) || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={selectedRowKeys.length ? `${activeTask === "dispatch" ? "Consolidate" : "Open actions for"} ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}` : `Open ${activeTask} action`}>
+            {(["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed"].includes(activeTask) || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={selectedRowKeys.length ? `${activeTask === "dispatch" ? "Consolidate" : "Open actions for"} ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}` : `Open ${activeTask} action`}>
               <Layers size={20} />
               <span>{selectedRowKeys.length
                 ? (activeTask === "dispatch" ? `Consolidate (${selectedRowKeys.length})` : `${selectedRowKeys.length} selected`)
-                : activeTask === "dispatch" ? "Consolidated Orders"
+                : activeTask === "deliver" ? "Pending Reroutes"
+                  : activeTask === "dispatch" ? "Consolidated Orders"
                   : isReceiveTask ? "Receive & Scan"
                     : activeTask === "confirmed" ? "Pick Orders"
-                      : activeTask === "reversed" || activeTask === "forwardReverse" ? "Consolidate Returns"
+                      : activeTask === "reversed" ? "Return to Vendor"
+                        : activeTask === "forwardReverse" ? "Consolidate Return"
                         : "Open Action"}</span>
             </button>}
             {batchPanelMode && <aside className="packages-detail-panel is-open" style={{ width: detailPanelWidth }} aria-label={`${batchPanelMode} batch`}>
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
               <header className="packages-detail-header">
-                <div><small>{batchPanelMode === "reversed" ? "REVERSED ORDERS" : batchPanelMode === "forwardReverse" ? "ORDERS TO REVERSE" : batchPanelMode === "confirmed" ? "ORDER CONFIRMED" : "ORDERS TO DISPATCH"}</small><h5>{batchPanelOrders.length} packages {batchPanelMode === "confirmed" ? "ready to scan" : "selected"}</h5></div>
+                <div><small>{batchPanelMode === "reroute" ? "REROUTE ORDERS" : batchPanelMode === "reversed" ? "REVERSED ORDERS" : batchPanelMode === "forwardReverse" ? "ORDERS TO REVERSE" : batchPanelMode === "confirmed" ? "ORDER CONFIRMED" : "ORDERS TO DISPATCH"}</small><h5>{batchPanelOrders.length} packages {batchPanelMode === "confirmed" ? "ready to scan" : "selected"}</h5></div>
                 <button type="button" onClick={() => { setBatchPanelMode(""); setBatchPanelStage("consolidate"); setExistingBatchCode(""); setExistingBatchEditOnly(false); }} aria-label="Close batch panel"><X size={19} /></button>
               </header>
               <div className="packages-detail-body">
                 {batchPanelMode !== "confirmed" && !existingBatchEditOnly && <section>
                   <h6>{batchPanelStage === "consolidate" ? "Consolidation route" : "Complete courier handover"}</h6>
-                  <div className="mb-3"><label className="form-label fw-semibold">{batchPanelMode === "reversed" ? "Vendor" : "Destination"}</label>{batchPanelMode === "reversed" ? <input className="form-control" value={batchDestination?.label || selectedOrdersForActions[0]?.VendorName || selectedOrdersForActions[0]?.VendorCode || "Vendor not recorded"} readOnly aria-readonly="true" /> : <SSRSelect instanceId="task-batch-destination" options={globalDCOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder="Select destination DC" isSearchable />}</div>
+                  <div className="mb-3"><label className="form-label fw-semibold">Destination</label><SSRSelect instanceId="task-batch-destination" options={globalDCOptions.filter((option) => option.value !== currentDCCode)} value={batchDestination} onChange={setBatchDestination} placeholder={batchPanelMode === "reversed" ? "Select HQ" : "Select destination DC"} isSearchable /></div>
                   {batchPanelStage === "complete" && <>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier *</label><SSRSelect instanceId="task-batch-courier" options={courierOptions} value={batchCourier} onChange={setBatchCourier} placeholder="Select courier" isSearchable /></div>
                     <div className="mb-3"><label className="form-label fw-semibold">Courier cost (KES) *</label><input type="number" min="0" step="0.01" className="form-control" value={batchCourierCost} onChange={(event) => setBatchCourierCost(event.target.value)} placeholder="Enter courier cost" /></div>
@@ -3206,6 +3218,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         dcCode={receiveBatch?.ToDCCode}
         courierCode={receiveBatch?.CourierCode || receiveBatch?.RiderUserCode}
         batchCount={receiveBatch?.IsMultiBatch ? receiveBatch.Batches.length : undefined}
+        isReverse={activeTask === "reverseReceive"}
         orders={receiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO))}
       />
 

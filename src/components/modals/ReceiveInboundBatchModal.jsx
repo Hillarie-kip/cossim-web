@@ -14,6 +14,11 @@ const RECEIVE_STATUS_OPTIONS = [
 }));
 
 const DEFAULT_STATUS_ID = PACKAGE_STATUSES.ARRIVED_AT_DC.orderStatusID;
+const REVERSE_RECEIVE_STATUS = {
+  value: PACKAGE_STATUSES.RETURNED_TO_VENDOR.orderStatusID,
+  label: "Orders to Return",
+  description: "Receive the consolidated return at this DC and make it available for consolidation back to HQ.",
+};
 
 const ReceiveInboundBatchModal = ({
   show,
@@ -23,6 +28,7 @@ const ReceiveInboundBatchModal = ({
   dcCode,
   courierCode,
   batchCount,
+  isReverse = false,
   orders = [],
 }) => {
   const [selectedStatus, setSelectedStatus] = useState(
@@ -34,12 +40,12 @@ const ReceiveInboundBatchModal = ({
   // Reset form whenever the modal opens with a new selection
   useEffect(() => {
     if (show) {
-      setSelectedStatus(
-        RECEIVE_STATUS_OPTIONS.find((o) => o.value === DEFAULT_STATUS_ID) || RECEIVE_STATUS_OPTIONS[0]
-      );
+      setSelectedStatus(isReverse
+        ? REVERSE_RECEIVE_STATUS
+        : RECEIVE_STATUS_OPTIONS.find((o) => o.value === DEFAULT_STATUS_ID) || RECEIVE_STATUS_OPTIONS[0]);
       setNotes("");
     }
-  }, [show]);
+  }, [show, isReverse]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -101,7 +107,7 @@ const ReceiveInboundBatchModal = ({
                   name="receiveStatus"
                   value={selectedStatus}
                   onChange={setSelectedStatus}
-                  options={RECEIVE_STATUS_OPTIONS}
+                  options={isReverse ? [REVERSE_RECEIVE_STATUS] : RECEIVE_STATUS_OPTIONS}
                   isSearchable={false}
                   isClearable={false}
                   className="react-select-container"
@@ -158,6 +164,7 @@ ReceiveInboundBatchModal.propTypes = {
   dcCode: PropTypes.string,
   courierCode: PropTypes.string,
   batchCount: PropTypes.number,
+  isReverse: PropTypes.bool,
   orders: PropTypes.arrayOf(
     PropTypes.shape({
       OrderNO: PropTypes.string,
