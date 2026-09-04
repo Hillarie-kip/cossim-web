@@ -734,7 +734,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       // Dispatch/handover orders leave the selected DC, so scope them by origin.
       fromDCCode: taskType === "dispatch" ? shipmentScopeDCCodes : undefined,
       toDCCode: taskType === "dispatch" ? undefined : commonParams.toDCCode,
-      checkSLA: taskType !== "confirmed",
+      // Returned orders are already identified by status 402/902. Enabling the
+      // SLA predicate here hides valid, overdue returns from this queue.
+      checkSLA: !["confirmed", "reversed"].includes(taskType),
       // Badge counts are independent, disposable requests. Do not let cached
       // background refreshes outlive a tab change or share the active-list UI.
       indexedDBCache: false,
@@ -915,7 +917,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       : (requestOverrides.toDCCode || toDCCode || undefined),
     vendorCategoryCode: undefined,
     taskType,
-    checkSLA: taskType !== "confirmed",
+    checkSLA: !["confirmed", "reversed"].includes(taskType),
   });
   };
 
@@ -959,7 +961,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       toDCCode: nextDCCode || undefined,
       statusIDs: undefined,
       taskType: activeTask,
-      checkSLA: activeTask !== "confirmed",
+      checkSLA: !["confirmed", "reversed"].includes(activeTask),
       startDate: formatLocalDateOnly(nextStartDate),
       endDate: formatLocalDateOnly(nextEndDate),
     });
@@ -1012,7 +1014,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       toDCCode: initialTaskUsesOriginDC ? undefined : effectiveDCCode || undefined,
       statusIDs: undefined,
       taskType: resolvedInitialTask,
-      checkSLA: resolvedInitialTask !== "confirmed",
+      checkSLA: !["confirmed", "reversed"].includes(resolvedInitialTask),
       onlyActive: Boolean(queryFilters.onlyActive),
       startDate: formatLocalDateOnly(effectiveStartDate),
       endDate: formatLocalDateOnly(effectiveEndDate),
