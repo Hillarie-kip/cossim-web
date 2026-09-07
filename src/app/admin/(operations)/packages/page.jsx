@@ -2821,6 +2821,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <Layers className="me-2 iconsize" />
                   {activeTask === "reversed" ? "Return to Vendor" : activeTask === "forwardReverse" ? "Consolidate Return" : "Consolidate"}
                 </button>
+                {activeTask === "forwardReverse" && (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE)) && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to reverse">
+                  <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
+                </div>}
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>

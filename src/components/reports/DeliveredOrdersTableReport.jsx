@@ -92,7 +92,7 @@ export default function DeliveredOrdersTableReport({
           statusIDs: effectiveStatusIDs,
           checkSLA: false,
           searchTerm: normalizedSearch || undefined,
-          vendorCode: navigationFilters.vendorCode || undefined,
+          vendorCode: isVendorOnly ? assignedVendorCode || undefined : navigationFilters.vendorCode || undefined,
           ...(["delivered", "completed"].includes(taskType)
             ? { toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined }
             : { fromDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined }),
@@ -151,7 +151,7 @@ export default function DeliveredOrdersTableReport({
 
   const columns = useMemo(() => isConsolidated ? [
     { title: "Handover code", dataIndex: "HandoverCode", width: 220, render: (value) => <strong className="text-primary">{text(value)}</strong> },
-    { title: "Batch date", dataIndex: "DateAdded", width: 180, render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
+    { title: "Batch date", dataIndex: "DateAdded", width: 180, render: (value, row) => <div><span>{value ? new Date(value).toLocaleString("en-GB") : "-"}</span><small className="d-block text-muted">Type: {({ ORDER: "Order", RETURN: "Return", REROUTE: "Reroute" })[String(row.BatchType || "").trim().toUpperCase()] || text(row.BatchType)}</small></div> },
     { title: "Source DC", dataIndex: "FromDCName", width: 210, render: (_, row) => <div><strong>{text(row.FromDCName || row.FromDCCode)}</strong><small className="d-block text-muted">{text(row.FromDCCode)}</small></div> },
     { title: "Destination DC", dataIndex: "ToDCName", width: 210, render: (_, row) => <div><strong>{text(row.ToDCName || row.ToDCCode)}</strong><small className="d-block text-muted">{text(row.ToDCCode)}</small></div> },
     { title: "Courier", dataIndex: "RiderName", width: 190, render: (_, row) => <div><strong>{text(row.RiderName || "Unassigned")}</strong><small className="d-block text-muted">{text(row.RiderUserCode)}</small></div> },

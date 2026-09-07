@@ -74,6 +74,7 @@ export const SidebarData = [
           { label: "All Orders", icon: <Icon.Inbox />, link: "/admin/reports/vendor-received-orders", submenu: false },
           { label: "Delivered Orders", icon: <Icon.CheckCircle />, link: "/admin/reports/delivered-orders", submenu: false },
           { label: "Completed Orders", icon: <Icon.CheckSquare />, link: "/admin/reports/completed-orders", submenu: false },
+          { label: "Lost Items", icon: <Icon.AlertTriangle />, link: "/admin/reports/lost-items", submenu: false },
         ],
       },
       {

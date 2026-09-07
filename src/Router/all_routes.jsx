@@ -62,6 +62,7 @@ export const all_routes = {
   allReturnsReport: "/admin/reports/all-returns",
   declinedReturnsReport: "/admin/reports/declined-returns",
   completedOrdersReport: "/admin/reports/completed-orders",
+  lostItemsReport: "/admin/reports/lost-items",
   consolidatedOrdersReport: "/admin/reports/consolidated-orders",
   shipmentSLAReport: "/admin/reports/shipment-sla",
   shipmentTrackingReport: "/admin/reports/shipment-tracking",
