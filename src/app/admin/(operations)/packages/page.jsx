@@ -454,6 +454,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [receiveItems, setReceiveItems] = useState([]);
   const [receiveItemsLoading, setReceiveItemsLoading] = useState(false);
   const [receivedOrderKeys, setReceivedOrderKeys] = useState([]);
+  const [completedReceiveKeys, setCompletedReceiveKeys] = useState([]);
+  const [lostOrderKeys, setLostOrderKeys] = useState([]);
   const [receiveScan, setReceiveScan] = useState("");
   const [showReceiveBatchModal, setShowReceiveBatchModal] = useState(false);
   const [batchPanelMode, setBatchPanelMode] = useState("");
@@ -2014,6 +2016,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setReceiveBatch(batch);
     setReceiveItems([]);
     setReceivedOrderKeys([]);
+    setCompletedReceiveKeys([]);
+    setLostOrderKeys([]);
     setReceiveScan("");
     setReceiveItemsLoading(true);
     try {
@@ -2021,7 +2025,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         handoverCode: batch.HandoverCode,
         ToDCCode: batch.ToDCCode || undefined,
       });
-      setReceiveItems(extractResponseList(response));
+      setReceiveItems(extractResponseList(response).map((item) => ({
+        ...item,
+        HandoverCode: item.HandoverCode || batch.HandoverCode,
+      })));
     } catch (error) {
       notify.error(error.message || "Failed to load batch packages");
     } finally {
@@ -2039,6 +2046,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setReceiveBatch({ IsMultiBatch: true, Batches: selectedBatches });
     setReceiveItems([]);
     setReceivedOrderKeys([]);
+    setCompletedReceiveKeys([]);
+    setLostOrderKeys([]);
     setReceiveScan("");
     setReceiveItemsLoading(true);
     try {
@@ -2107,6 +2116,22 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       setSelectedRowKeys([]);
       return;
     }
+    const selectedReceiveKeys = new Set(payload.Orders.map((order) => order.OrderNO));
+    const isBatchFullyResolved = (batchItems) => batchItems.every((item) =>
+      selectedReceiveKeys.has(item.OrderNO)
+      || completedReceiveKeys.includes(item.OrderNO)
+      || lostOrderKeys.includes(item.OrderNO)
+    );
+    const receiveSelectedOrdersOnly = async (orders) => {
+      if (!orders.length) return;
+      await handleUpdateShipmentStatusBatch(orders.map((order) => ({
+        statusID: payload.StatusID,
+        orderNO: order.OrderNO,
+        notes: payload.Notes || "Inbound package received",
+        dcCode: payload.DCCode || "",
+        riderCode: "",
+      })));
+    };
     if (receiveBatch?.IsMultiBatch) {
       const selectedByBatch = payload.Orders.reduce((groups, order) => {
         const handoverCode = order.HandoverCode;
@@ -2116,32 +2141,86 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       }, {});
       const batchesToReceive = receiveBatch.Batches.filter((batch) => selectedByBatch[batch.HandoverCode]?.length);
       await Promise.all(batchesToReceive.map(async (batch) => {
+        const batchItems = receiveItems.filter((item) => item.HandoverCode === batch.HandoverCode);
+        const selectedOrders = selectedByBatch[batch.HandoverCode];
+        if (!isBatchFullyResolved(batchItems)) {
+          await receiveSelectedOrdersOnly(selectedOrders);
+          return;
+        }
         const response = await handleReceiveInboundShipmentBatch({
           ...payload,
           HandoverCode: batch.HandoverCode,
           DCCode: batch.ToDCCode || payload.DCCode,
           CourierCode: batch.CourierCode || batch.RiderUserCode || payload.CourierCode,
-          Orders: selectedByBatch[batch.HandoverCode],
+          Orders: selectedOrders,
         });
         if (response?.Error) throw new Error(response.Message || `Batch ${batch.HandoverCode} could not be accepted`);
       }));
-      notify.success(`${batchesToReceive.length} batches accepted`);
-      setReceiveBatch(null);
-      setReceiveItems([]);
+      const fullyResolvedBatchCodes = new Set(batchesToReceive.filter((batch) => isBatchFullyResolved(receiveItems.filter((item) => item.HandoverCode === batch.HandoverCode))).map((batch) => batch.HandoverCode));
+      notify.success(fullyResolvedBatchCodes.size ? `${fullyResolvedBatchCodes.size} batch${fullyResolvedBatchCodes.size === 1 ? "" : "es"} completed` : "Selected packages received; batch remains open until all packages are resolved");
+      setCompletedReceiveKeys((current) => [...new Set([...current, ...payload.Orders.map((order) => order.OrderNO)])]);
       setReceivedOrderKeys([]);
       setSelectedRowKeys([]);
-      const receivedCodes = new Set(batchesToReceive.map((batch) => batch.HandoverCode));
+      const receivedCodes = fullyResolvedBatchCodes;
       setAllInboundBatches((current) => current.filter((batch) => !receivedCodes.has(batch.HandoverCode)));
+      if (fullyResolvedBatchCodes.size === receiveBatch.Batches.length) {
+        setReceiveBatch(null);
+        setReceiveItems([]);
+      }
+      return;
+    }
+    const batchItems = receiveItems.filter((item) => item.HandoverCode === receiveBatch?.HandoverCode);
+    if (!isBatchFullyResolved(batchItems)) {
+      await receiveSelectedOrdersOnly(payload.Orders);
+      setCompletedReceiveKeys((current) => [...new Set([...current, ...payload.Orders.map((order) => order.OrderNO)])]);
+      setReceivedOrderKeys([]);
+      notify.success("Selected packages received; batch remains open until all packages are resolved");
       return;
     }
     const response = await handleReceiveInboundShipmentBatch(payload);
     if (response?.Error) throw new Error(response.Message || "Batch could not be accepted");
-    notify.success(response?.Message || "Batch accepted");
+    notify.success(response?.Message || "Batch completed");
     setReceiveBatch(null);
     setReceiveItems([]);
     setReceivedOrderKeys([]);
+    setCompletedReceiveKeys([]);
+    setLostOrderKeys([]);
     setSelectedRowKeys([]);
     setAllInboundBatches((current) => current.filter((batch) => batch.HandoverCode !== payload.HandoverCode));
+  };
+
+  const handleMarkSelectedReceiveItemsLost = async () => {
+    const selectedItems = receiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO));
+    if (!selectedItems.length) return;
+
+    const lostReasonOptions = LOST_REASON_CODES.map(([code, label]) => `<option value="${code}">${code} - ${label}</option>`).join("");
+    const { value } = await MySwal.fire({
+      title: `Mark ${selectedItems.length} package${selectedItems.length === 1 ? "" : "s"} as lost?`,
+      html: `<div class="text-start"><label for="receive-lost-reason" class="form-label fw-semibold">Lost reason *</label><select id="receive-lost-reason" class="form-select"><option value="">Select a lost reason</option>${lostReasonOptions}</select><label for="receive-lost-notes" class="form-label fw-semibold mt-3">Notes *</label><textarea id="receive-lost-notes" class="form-control" rows="4" placeholder="Describe where and how the package was lost"></textarea></div>`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Mark as lost",
+      preConfirm: () => {
+        const reasonCode = document.getElementById("receive-lost-reason")?.value;
+        const notes = document.getElementById("receive-lost-notes")?.value?.trim();
+        if (!reasonCode) return Swal.showValidationMessage("Select a lost reason");
+        if (!notes) return Swal.showValidationMessage("Notes are required");
+        return { reasonCode, notes };
+      },
+    });
+    if (!value) return;
+
+    const reasonLabel = LOST_REASON_CODES.find(([code]) => code === value.reasonCode)?.[1] || value.reasonCode;
+    await handleUpdateShipmentStatusBatch(selectedItems.map((item) => ({
+      statusID: PACKAGE_STATUSES.CLOSED_FAILED.orderStatusID,
+      orderNO: item.OrderNO,
+      notes: `Marked lost; Reason: ${value.reasonCode} - ${reasonLabel}; Notes: ${value.notes}`,
+      dcCode: receiveBatch?.ToDCCode || "",
+      riderCode: "",
+    })));
+    setLostOrderKeys((current) => [...new Set([...current, ...selectedItems.map((item) => item.OrderNO)])]);
+    setReceivedOrderKeys([]);
+    notify.success(`${selectedItems.length} package${selectedItems.length === 1 ? "" : "s"} marked as lost`);
   };
 
   const MySwal = withReactContent(Swal);
@@ -3026,18 +3105,26 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     </form>
                     {receiveItemsLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : (
                       <div className="list-group mb-3">
-                        {receiveItems.map((item) => <label className="list-group-item d-flex align-items-center justify-content-between gap-2" key={`${item.HandoverCode || "blind"}-${item.OrderNO}`}>
-                          <span className="d-flex align-items-center gap-2">
-                          <input type="checkbox" className="form-check-input m-0" checked={receivedOrderKeys.includes(item.OrderNO)} onChange={(event) => setReceivedOrderKeys((current) => event.target.checked ? [...new Set([...current, item.OrderNO])] : current.filter((key) => key !== item.OrderNO))} />
-                          <strong>{item.OrderNO}</strong>
-                          </span>
-                          {receiveBatch.IsMultiBatch && <small className="text-muted">{item.HandoverCode}</small>}
-                        </label>)}
+                        {receiveItems.map((item) => {
+                          const isReceived = completedReceiveKeys.includes(item.OrderNO);
+                          const isLost = lostOrderKeys.includes(item.OrderNO);
+                          const isResolved = isReceived || isLost;
+                          return <label className={`list-group-item d-flex align-items-center justify-content-between gap-2 ${isResolved ? "bg-light" : ""}`} key={`${item.HandoverCode || "blind"}-${item.OrderNO}`}>
+                            <span className="d-flex align-items-center gap-2">
+                              <input type="checkbox" className="form-check-input m-0" checked={receivedOrderKeys.includes(item.OrderNO)} disabled={isResolved} onChange={(event) => setReceivedOrderKeys((current) => event.target.checked ? [...new Set([...current, item.OrderNO])] : current.filter((key) => key !== item.OrderNO))} />
+                              <strong>{item.OrderNO}</strong>
+                              {isReceived && <small className="text-success fw-semibold">Received</small>}
+                              {isLost && <small className="text-danger fw-semibold">Lost</small>}
+                            </span>
+                            {receiveBatch.IsMultiBatch && <small className="text-muted">{item.HandoverCode}</small>}
+                          </label>;
+                        })}
                       </div>
                     )}
                     <div className="d-flex flex-wrap gap-2">
                       <button type="button" className="btn btn-outline-success" disabled={!receiveItems.length} onClick={() => setReceivedOrderKeys(receiveItems.map((item) => item.OrderNO))}>Confirm All Manually</button>
-                      <button type="button" className="btn btn-success" disabled={!receivedOrderKeys.length} onClick={() => setShowReceiveBatchModal(true)}>{receiveBatch.HandoverCode || receiveBatch.IsMultiBatch ? "Accept Batch" : "Acknowledge Receipt"} ({receivedOrderKeys.length})</button>
+                      <button type="button" className="btn btn-success" disabled={!receivedOrderKeys.length} onClick={() => setShowReceiveBatchModal(true)}>Receive selected ({receivedOrderKeys.length})</button>
+                      <button type="button" className="btn btn-outline-danger" disabled={!receivedOrderKeys.length} onClick={handleMarkSelectedReceiveItemsLost}>Mark selected as lost ({receivedOrderKeys.length})</button>
                     </div>
                   </section>
                 </div>
