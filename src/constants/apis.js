@@ -158,6 +158,7 @@ const apiRoutes = {
     getShipmentProductNames: `${API_BASE}/api/Shipment/GetShipmentProductNames`,
     getShipmentOrderPayment: `${API_BASE}/api/Shipment/GetShipmentOrderPayment`,
     saveShipmentOrderPayment: `${API_BASE}/api/Shipment/SaveShipmentOrderPayment`,
+    adjustShipmentCOD: `${API_BASE}/api/Shipment/AdjustShipmentCOD`,
     confirmShipmentOrderPayment: `${API_BASE}/api/Shipment/ConfirmShipmentOrderPayment`,
     deleteShipmentOrderPayment: `${API_BASE}/api/Shipment/DeleteShipmentOrderPayment`,
     importDeliveredOrderPayments: `${API_BASE}/api/Shipment/ImportDeliveredOrderPayments`,

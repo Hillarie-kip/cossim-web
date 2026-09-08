@@ -489,6 +489,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [batchReceipt, setBatchReceipt] = useState(null);
   const [batchScan, setBatchScan] = useState("");
   const [batchScannedKeys, setBatchScannedKeys] = useState([]);
+  const batchScanQueueRef = useRef([]);
+  const batchScanWorkerRef = useRef(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [outboundBatches, setOutboundBatches] = useState([]);
   const [outboundBatchPage, setOutboundBatchPage] = useState(1);
@@ -1843,10 +1845,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const handleBatchPanelScan = (event) => {
     event.preventDefault();
     const code = batchScan.trim().replace(/^.*?(PCK-[A-Z0-9-]+).*$/i, "$1").toUpperCase();
+    if (!code) return;
+    // Clear immediately so a slow lookup cannot erase the next barcode.
+    setBatchScan("");
     const match = batchPanelOrders.find((order) => String(order.OrderNO).toUpperCase() === code);
     if (match) {
       setBatchScannedKeys((current) => current.includes(match.OrderNO) ? current : [...current, match.OrderNO]);
-      setBatchScan("");
       return;
     }
     if (batchPanelMode === "reversed") return notify.error("Package number is not in the selected orders");
@@ -1862,7 +1866,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       if (packageDC && outsideSelectedScope) return notify.error(`This package is at ${packageDC}, which is not among the selected DCs.`);
       setBatchPanelOrders((current) => current.some((item) => item.OrderNO === order.OrderNO) ? current : [...current, order]);
       setBatchScannedKeys((current) => current.includes(order.OrderNO) ? current : [...current, order.OrderNO]);
-      setBatchScan("");
     }).catch(() => {});
   };
 
@@ -1914,7 +1917,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   const handleBatchPanelSubmit = async () => {
     if (!batchDestination || !batchCourier) return notify.error("Select the destination and courier.");
-    if (!batchCourierCost || Number(batchCourierCost) <= 0) return notify.error("Enter the courier cost.");
+    if (batchCourierCost === "" || !Number.isFinite(Number(batchCourierCost)) || Number(batchCourierCost) < 0) return notify.error("Enter a valid courier cost.");
     if (!batchReceipt) return notify.error("Attach the courier receipt.");
     if (batchScannedKeys.length !== batchPanelOrders.length) return notify.error("Scan every selected package before completing the batch.");
     const batchCurrentDCCodes = [...new Set(batchPanelOrders.map((order) => order.LatestLogDCCode || order.CurrentDCCode || order.InitialLogDCCode || order.OriginDCCode).filter(Boolean))];
@@ -3128,7 +3131,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     {receiveItemsLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : (
                       <div className="list-group mb-3">
                         {receiveItems.map((item) => {
-                          const isReceived = completedReceiveKeys.includes(item.OrderNO);
+                          const isReceived = completedReceiveKeys.includes(item.OrderNO) || Number(item.OrderStatusID) === 201;
                           const isLost = lostOrderKeys.includes(item.OrderNO);
                           const isResolved = isReceived || isLost;
                           return <label className={`list-group-item d-flex align-items-center justify-content-between gap-2 ${isResolved ? "bg-light" : ""}`} key={`${item.HandoverCode || "blind"}-${item.OrderNO}`}>
@@ -3144,7 +3147,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       </div>
                     )}
                     <div className="d-flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-outline-success" disabled={!receiveItems.length} onClick={() => setReceivedOrderKeys(receiveItems.map((item) => item.OrderNO))}>Confirm All Manually</button>
+                      <button type="button" className="btn btn-outline-success" disabled={!receiveItems.some((item) => Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO))} onClick={() => setReceivedOrderKeys(receiveItems.filter((item) => Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO)).map((item) => item.OrderNO))}>Confirm All Manually</button>
                       <button type="button" className="btn btn-success" disabled={!receivedOrderKeys.length} onClick={() => setShowReceiveBatchModal(true)}>Receive selected ({receivedOrderKeys.length})</button>
                       <button type="button" className="btn btn-outline-danger" disabled={!receivedOrderKeys.length} onClick={handleMarkSelectedReceiveItemsLost}>Mark selected as lost ({receivedOrderKeys.length})</button>
                     </div>
@@ -3245,7 +3248,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <p className="text-muted small mb-3">{batchPanelOrders.length} consolidated package{batchPanelOrders.length === 1 ? "" : "s"}.</p>
                     <div className="d-flex gap-2">
                       <button type="button" className="btn btn-outline-secondary flex-fill" disabled={batchSubmitting} onClick={() => setBatchPanelStage("consolidate")}>Back</button>
-                      <button type="button" className="btn btn-success flex-fill" disabled={batchSubmitting || !batchCourier || !batchCourierCost || Number(batchCourierCost) <= 0 || !batchReceipt} onClick={handleBatchPanelSubmit}>{batchSubmitting ? "Completing..." : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Return & Dispatch" : "Complete Dispatch"}</button>
+                      <button type="button" className="btn btn-success flex-fill" disabled={batchSubmitting || !batchCourier || batchCourierCost === "" || !Number.isFinite(Number(batchCourierCost)) || Number(batchCourierCost) < 0 || !batchReceipt} onClick={handleBatchPanelSubmit}>{batchSubmitting ? "Completing..." : batchPanelMode === "reversed" || batchPanelMode === "forwardReverse" ? "Return & Dispatch" : "Complete Dispatch"}</button>
                     </div>
                   </>}
                 </section>}
@@ -3372,7 +3375,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         courierCode={receiveBatch?.CourierCode || receiveBatch?.RiderUserCode}
         batchCount={receiveBatch?.IsMultiBatch ? receiveBatch.Batches.length : undefined}
         isReverse={activeTask === "reverseReceive"}
-        orders={receiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO))}
+        orders={receiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO) && Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO))}
       />
 
       <Modal show={showCreatePackage} onHide={() => setShowCreatePackage(false)} size="xl" fullscreen="lg-down" scrollable centered>

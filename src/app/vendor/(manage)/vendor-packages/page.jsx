@@ -4,7 +4,7 @@ import Link from '@/components/Link';
 import SSRSelect from '@/components/SSRSelect';
 import VendorPageHeader from '@/components/vendor/VendorPageHeader';
 import { useShipment } from '@/hooks/useShipment';
-import { Spinner, Alert } from 'react-bootstrap';
+import { Spinner, Alert, Modal } from 'react-bootstrap';
 import Datatable from '@/core/pagination/datatable';
 import RowActionsDropdown from '@/components/RowActionsDropdown';
 import DashCard from '@/components/cards/DashCard';
@@ -18,6 +18,8 @@ import TableExportIcons from '@/components/TableExportIcons';
 import { createFetchAllDataFunction } from '@/utils/tableExport';
 import { exportColumns, pdfColumns } from './components/tableColumns';
 import { readPackageDrilldownQuery } from '@/utils/packageDrilldownUtils';
+import { adjustShipmentCOD } from '@/services/shipmentService';
+import notify from '@/lib/toast';
 
 const getStatusName = (status) =>
   status?.statusName ||
@@ -39,6 +41,11 @@ const VendorPackages = () => {
   const [showUpdateStatusModal, setShowUpdateStatusModal] = useState(false);
   const [showBulkUpdateStatusModal, setShowBulkUpdateStatusModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showCODAdjustmentModal, setShowCODAdjustmentModal] = useState(false);
+  const [codAdjustmentOrder, setCODAdjustmentOrder] = useState(null);
+  const [newCODAmount, setNewCODAmount] = useState('');
+  const [codAdjustmentReason, setCODAdjustmentReason] = useState('');
+  const [codAdjustmentSubmitting, setCODAdjustmentSubmitting] = useState(false);
 
   useEffect(() => {
     const query = readPackageDrilldownQuery();
@@ -281,6 +288,12 @@ const VendorPackages = () => {
               onClick: () => handleDownloadSticker(record),
             },
             { key: 'update-status', label: 'Update Status', icon: 'feather-refresh-cw', onClick: () => handleUpdateStatus(record) },
+            record.CashOnDeliveryRequired && [303, 802].includes(Number(record.StatusID)) && {
+              key: 'adjust-cod',
+              label: 'Adjust COD Amount',
+              icon: 'feather-dollar-sign',
+              onClick: () => handleOpenCODAdjustment(record),
+            },
             record.StatusCode === 'VENDOR_CREATED' && { divider: true },
             record.StatusCode === 'VENDOR_CREATED' && {
               key: 'cancel',
@@ -355,6 +368,43 @@ const VendorPackages = () => {
     } catch (error) {
       console.error('Failed to update status:', error);
       throw error;
+    }
+  };
+
+  const handleOpenCODAdjustment = (order) => {
+    setCODAdjustmentOrder(order);
+    setNewCODAmount(String(order.CODAmount ?? ''));
+    setCODAdjustmentReason('');
+    setShowCODAdjustmentModal(true);
+  };
+
+  const handleCloseCODAdjustment = () => {
+    if (codAdjustmentSubmitting) return;
+    setShowCODAdjustmentModal(false);
+    setCODAdjustmentOrder(null);
+  };
+
+  const handleCODAdjustmentSubmit = async (event) => {
+    event.preventDefault();
+    const amount = Number(newCODAmount);
+    const reason = codAdjustmentReason.trim();
+    if (!codAdjustmentOrder || !Number.isFinite(amount) || amount < 0 || !reason) return;
+
+    setCODAdjustmentSubmitting(true);
+    try {
+      await adjustShipmentCOD({
+        OrderNO: codAdjustmentOrder.OrderNO,
+        NewCODAmount: amount,
+        Reason: reason,
+      });
+      notify.success('COD amount adjusted successfully.');
+      setCODAdjustmentSubmitting(false);
+      handleCloseCODAdjustment();
+      await fetchShipmentOrdersByVendor(buildQueryParams({ pageNo: currentPage }));
+    } catch (error) {
+      notify.error(error.message || 'Failed to adjust COD amount.');
+    } finally {
+      setCODAdjustmentSubmitting(false);
     }
   };
 
@@ -743,6 +793,36 @@ const VendorPackages = () => {
         onSubmit={handleBulkUpdateStatusSubmit}
         orders={selectedOrders}
       />
+      <Modal show={showCODAdjustmentModal} onHide={handleCloseCODAdjustment} centered>
+        <form onSubmit={handleCODAdjustmentSubmit}>
+          <Modal.Header closeButton>
+            <Modal.Title>Adjust COD amount</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="text-muted small mb-3">
+              Update the amount agreed with the customer. This amount will be used for COD reconciliation.
+            </p>
+            <div className="mb-3">
+              <label className="form-label">Package</label>
+              <input className="form-control" value={codAdjustmentOrder?.OrderNO || ''} readOnly />
+            </div>
+            <div className="mb-3">
+              <label className="form-label" htmlFor="vendor-cod-adjustment-amount">New COD amount (KES)</label>
+              <input id="vendor-cod-adjustment-amount" className="form-control" type="number" min="0" step="0.01" value={newCODAmount} onChange={(event) => setNewCODAmount(event.target.value)} required />
+            </div>
+            <div>
+              <label className="form-label" htmlFor="vendor-cod-adjustment-reason">Reason</label>
+              <textarea id="vendor-cod-adjustment-reason" className="form-control" rows="3" maxLength="500" placeholder="e.g. Customer renegotiated the price at delivery" value={codAdjustmentReason} onChange={(event) => setCODAdjustmentReason(event.target.value)} required />
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <button type="button" className="btn btn-light" onClick={handleCloseCODAdjustment} disabled={codAdjustmentSubmitting}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={codAdjustmentSubmitting || !codAdjustmentReason.trim() || !newCODAmount}>
+              {codAdjustmentSubmitting ? 'Saving...' : 'Save COD adjustment'}
+            </button>
+          </Modal.Footer>
+        </form>
+      </Modal>
       <style jsx global>{`
         /*
          * The theme's ".btn-group .btn" rule (padding: 0.45rem 0.75rem) has

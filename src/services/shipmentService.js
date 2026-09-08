@@ -609,6 +609,12 @@ export const saveShipmentOrderPayment = async (data) => {
     return response.data;
 };
 
+export const adjustShipmentCOD = async (data) => {
+    const response = await api.post(apiRoutes.shipment.adjustShipmentCOD, data);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Failed to adjust COD amount');
+    return response.data;
+};
+
 export const confirmShipmentOrderPayment = async ({ id, orderNO }) => {
     const query = new URLSearchParams({ id: String(id), orderNO });
     const response = await api.put(`${apiRoutes.shipment.confirmShipmentOrderPayment}?${query}`);

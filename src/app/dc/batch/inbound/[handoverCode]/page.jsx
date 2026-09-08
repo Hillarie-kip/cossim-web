@@ -105,6 +105,11 @@ const InboundBatchDetail = () => {
       notify.error("Scanned order is not part of this handover batch");
       return;
     }
+    if (Number(matchedItem.OrderStatusID) === 201) {
+      notify.error(`${matchedItem.OrderNO} has already been received`);
+      setScanInput("");
+      return;
+    }
     setSelectedRowKeys((current) => current.includes(matchedItem.OrderNO)
       ? current
       : [...current, matchedItem.OrderNO]);
@@ -128,11 +133,12 @@ const InboundBatchDetail = () => {
 
   // Open the receive modal for every item in the batch
   const handleReceiveAll = () => {
-    if (!handoverItems || handoverItems.length === 0) {
+    const receivableItems = (handoverItems || []).filter((item) => Number(item.OrderStatusID) !== 201);
+    if (receivableItems.length === 0) {
       notify.error("This batch has no items to receive");
       return;
     }
-    setSelectedRowKeys(handoverItems.map((item) => item.OrderNO));
+    setSelectedRowKeys(receivableItems.map((item) => item.OrderNO));
     setShowReceiveModal(true);
   };
 
@@ -387,7 +393,7 @@ const InboundBatchDetail = () => {
         handoverCode={handoverCode}
         dcCode={dcCode || batchInfo?.toDC}
         orders={(handoverItems || []).filter((item) =>
-          selectedRowKeys.includes(item.OrderNO)
+          selectedRowKeys.includes(item.OrderNO) && Number(item.OrderStatusID) !== 201
         )}
       />
     </div>
