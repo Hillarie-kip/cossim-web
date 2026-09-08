@@ -128,9 +128,27 @@ const getUserHistoryNotes = (event) => {
   if (explicitNotes) return explicitNotes;
 
   // Scheduled delivery notes are stored with a system-generated prefix.
-  const scheduledNotes = notes.match(/^Schedule\s+\d+:\s*(.+)$/i)?.[1]?.trim();
+  const scheduledNotes = notes.match(/(?:^|;\s*)Schedule\s+\d+:\s*(.+)$/i)?.[1]?.trim();
   return scheduledNotes || notes;
 };
+
+const getHistoryStatus = (event, dcOptions = []) => {
+  const status = event?.StatusName || event?.StatusCode || "Shipment update";
+  const locationCode = event?.ToDCCode || event?.DestinationDCCode || event?.DCCode;
+  const locationOption = dcOptions.find((option) => option.value === locationCode);
+  const location = locationOption?.label?.replace(new RegExp(`\\s*\\(${locationCode}\\)$`), "")
+    || event?.ToDCName
+    || event?.DestinationDCName
+    || event?.DCName
+    || locationCode;
+  if (!location) return status;
+  return String(status)
+    .replace(/Received at DC/i, `Received at ${location}`)
+    .replace(/In Transit to DC/i, `In Transit to ${location}`)
+    .replace(/Transfer Inbound to DC/i, `Transfer Inbound to ${location}`);
+};
+
+const isHistoryAttempt = (event) => /(?:1st|2nd|3rd|first|second|third)\s+attempt/i.test(String(event?.StatusName || event?.StatusCode || ""));
 
 const parsePackageFilterDate = (value) => {
   if (!value) return null;
@@ -3292,18 +3310,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                           {[...detailHistory].sort((a, b) => new Date(b.EventTime || b.DateAdded || 0) - new Date(a.EventTime || a.DateAdded || 0)).map((event, index) => (
                             <article className="packages-detail-history-step" key={event._historyKey || index}>
                               <div className="packages-detail-history-rail" aria-hidden="true">
-                                <span className="packages-detail-history-node">{detailHistory.length - index}</span>
-                                {index < detailHistory.length - 1 && <span className="packages-detail-history-connector"><i className="feather-chevron-down" /></span>}
+                                <span className="packages-detail-history-node" />
+                                {index < detailHistory.length - 1 && <span className="packages-detail-history-connector" />}
                               </div>
-                              <div className="packages-detail-history-card">
-                                <div className="packages-detail-history-card-head">
-                                  <div><small>Step {detailHistory.length - index}</small><strong>{event.StatusName || event.StatusCode || "Shipment update"}</strong></div>
-                                  <time>{formatPackageDate(event.EventTime || event.DateAdded)?.toLocaleString("en-GB") || "-"}</time>
+                              <div className="packages-detail-history-content">
+                                <div className="packages-detail-history-main">
+                                  <strong>{getHistoryStatus(event, dcOptions)}</strong>
+                                  <div className="packages-detail-history-details">
+                                    <span>Actioned by: {event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span>
+                                    {isHistoryAttempt(event) && <span>Notes: {getUserHistoryNotes(event)}</span>}
+                                  </div>
                                 </div>
-                                <div className="packages-detail-history-meta">
-                                  <div><small>Actioned by</small><span>{event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span></div>
-                                  <div><small>Notes</small><span>{getUserHistoryNotes(event)}</span></div>
-                                </div>
+                                <time><i className="feather-calendar" aria-hidden="true" />{formatPackageDate(event.EventTime || event.DateAdded)?.toLocaleString("en-GB") || "-"}</time>
                               </div>
                             </article>
                           ))}
@@ -3430,23 +3448,20 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-detail-items-head { background: #f8fafc; color: #667085; font-size: 10px; font-weight: 800; text-transform: uppercase; }
         .packages-detail-items-row { border-top: 1px solid #edf0f4; color: #344054; font-size: 11px; }
         .packages-detail-items-row span { min-width: 0; overflow-wrap: anywhere; }
-        .packages-detail-history-list { display: flex; flex-direction: column; gap: 0; padding: 5px 2px 5px 0; }
-        .packages-detail-history-step { display: grid; grid-template-columns: 38px 1fr; gap: 12px; min-width: 0; }
+        .packages-detail-history-list { display: flex; flex-direction: column; padding: 6px 0 6px 4px; }
+        .packages-detail-history-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; min-width: 0; }
         .packages-detail-history-rail { position: relative; display: flex; align-items: center; flex-direction: column; }
-        .packages-detail-history-node { position: relative; z-index: 1; display: grid; width: 30px; height: 30px; place-items: center; border: 3px solid #fff; border-radius: 50%; background: #ff6200; box-shadow: 0 0 0 2px #ffb27f, 0 4px 8px rgba(255, 98, 0, .2); color: #fff; font-size: 11px; font-weight: 800; }
-        .packages-detail-history-connector { position: relative; display: flex; flex: 1; align-items: center; flex-direction: column; width: 2px; min-height: 28px; background: #ffc49e; color: #e85a00; }
-        .packages-detail-history-connector i { position: absolute; bottom: -3px; padding: 1px; background: #fff; font-size: 13px; }
-        .packages-detail-history-card { min-width: 0; margin-bottom: 14px; padding: 13px 14px; border: 1px solid #e7eaf0; border-left: 4px solid #ff8a43; border-radius: 9px; background: #fff; box-shadow: 0 4px 12px rgba(23, 43, 77, .05); }
-        .packages-detail-history-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-        .packages-detail-history-card-head div { min-width: 0; }
-        .packages-detail-history-card-head small { display: block; margin-bottom: 3px; color: #b54708; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-        .packages-detail-history-card-head strong { display: block; color: #172b4d; font-size: 13px; line-height: 1.25; }
-        .packages-detail-history-card-head time { flex: 0 0 auto; color: #667085; font-size: 10px; text-align: right; }
-        .packages-detail-history-meta { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(0, 1.5fr); gap: 14px; margin-top: 13px; padding-top: 10px; border-top: 1px solid #f2f4f7; }
-        .packages-detail-history-meta > div { min-width: 0; }
-        .packages-detail-history-meta small { display: block; margin-bottom: 3px; color: #98a2b3; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-        .packages-detail-history-meta span { display: block; color: #344054; font-size: 11px; overflow-wrap: anywhere; }
-        @media (max-width: 520px) { .packages-detail-history-step { grid-template-columns: 32px 1fr; gap: 8px; } .packages-detail-history-node { width: 26px; height: 26px; font-size: 10px; } .packages-detail-history-card { padding: 11px; } .packages-detail-history-card-head { flex-direction: column; gap: 5px; } .packages-detail-history-card-head time { text-align: left; } .packages-detail-history-meta { grid-template-columns: 1fr; gap: 9px; } }
+        .packages-detail-history-node { position: relative; z-index: 1; width: 16px; height: 16px; margin-top: 4px; border: 3px solid #fff; border-radius: 50%; background: #333; box-shadow: 0 0 0 1px #333; }
+        .packages-detail-history-step:first-child .packages-detail-history-node { background: #8a245c; box-shadow: 0 0 0 8px #f3e8ef; }
+        .packages-detail-history-connector { flex: 1; width: 1px; min-height: 18px; border-left: 2px dashed #c9c9c9; }
+        .packages-detail-history-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(125px, 180px); gap: 18px; min-width: 0; padding: 8px 0 17px; border-bottom: 1px solid #e5e5e5; }
+        .packages-detail-history-main { min-width: 0; }
+        .packages-detail-history-main > strong { display: block; color: #292929; font-size: 15px; font-weight: 500; line-height: 1.25; }
+        .packages-detail-history-details { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 5px; color: #4f4f4f; font-size: 11px; line-height: 1.35; }
+        .packages-detail-history-details span { min-width: 0; overflow-wrap: anywhere; }
+        .packages-detail-history-content time { display: flex; align-items: flex-start; justify-content: flex-end; gap: 8px; color: #4f4f4f; font-size: 11px; line-height: 1.25; text-align: right; }
+        .packages-detail-history-content time i { color: #999; font-size: 15px; }
+        @media (max-width: 520px) { .packages-detail-history-step { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; } .packages-detail-history-content { grid-template-columns: minmax(0, 1fr) 118px; gap: 8px; } .packages-detail-history-main > strong { font-size: 13px; } .packages-detail-history-details { display: block; } .packages-detail-history-details span { display: block; margin-top: 3px; } }
         .packages-detail-item { display: grid; grid-template-columns: minmax(100px, 38%) 1fr; gap: 14px; padding: 7px 0; }
         .packages-detail-item small { color: #7a8495; }
         .packages-detail-item span { color: #172b4d; overflow-wrap: anywhere; }
