@@ -10,8 +10,13 @@ import useShipment from "@/hooks/useShipment";
 import useStickerDownload from "@/hooks/useStickerDownload";
 import { UpdateStatusModal } from "@/components/modals";
 import notify from "@/lib/toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { RoleType } from "@/constants/user-roles";
 
 const PackageDetailPage = () => {
+  const { user } = useAuth();
+  const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isVendorOnly = roleCodes.has(RoleType.VENDOR) && !roleCodes.has(RoleType.ADMIN);
   const params = useParams();
   const router = useRouter();
   const MySwal = withReactContent(Swal);
@@ -72,6 +77,7 @@ const PackageDetailPage = () => {
   };
 
   const handleDeletePackage = async () => {
+    if (isVendorOnly) return;
     const { value: notes } = await MySwal.fire({
       title: "Delete Package",
       text: `Are you sure you want to delete package ${packageData.OrderNO}?`,
@@ -165,10 +171,10 @@ const PackageDetailPage = () => {
               <ArrowLeft size={16} className="me-2" />
               Back to Task Management
             </Link>
-            <Button variant="primary" onClick={() => setShowEditModal(true)}>
+            {!isVendorOnly && <Button variant="primary" onClick={() => setShowEditModal(true)}>
               <Edit3 size={16} className="me-2" />
               Edit Package
-            </Button>
+            </Button>}
             <Link
               to={`/admin/packages/${packageData.OrderNO}/track?trackingNumber=${encodeURIComponent(packageData.OrderNO)}`}
               className="btn btn-outline-primary"
@@ -184,14 +190,14 @@ const PackageDetailPage = () => {
               <Printer size={16} className="me-2" />
               {isGenerating ? "Preparing..." : "Print Sticker"}
             </Button>
-            <Button variant="outline-primary" onClick={() => setShowUpdateStatusModal(true)}>
+            {!isVendorOnly && <Button variant="outline-primary" onClick={() => setShowUpdateStatusModal(true)}>
               <RefreshCw size={16} className="me-2" />
               Update Status
-            </Button>
-            <Button variant="danger" onClick={handleDeletePackage}>
+            </Button>}
+            {!isVendorOnly && <Button variant="danger" onClick={handleDeletePackage}>
               <Trash2 size={16} className="me-2" />
               Delete
-            </Button>
+            </Button>}
           </div>
         </div>
 
@@ -580,7 +586,7 @@ const PackageDetailPage = () => {
         </Row>
 
         {/* Edit Modal */}
-        <Modal show={showEditModal} onHide={() => setShowEditModal(false)} size="lg">
+        <Modal show={!isVendorOnly && showEditModal} onHide={() => setShowEditModal(false)} size="lg">
           <Modal.Header closeButton>
             <Modal.Title>Edit Package</Modal.Title>
           </Modal.Header>

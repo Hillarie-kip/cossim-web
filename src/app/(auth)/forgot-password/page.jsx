@@ -25,6 +25,7 @@ const ForgotPasswordPage = () => {
   const handleRequestPasscode = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setLoading(true);
     
     try {
@@ -33,7 +34,7 @@ const ForgotPasswordPage = () => {
       };
       
       await requestPasscode(payload);
-      setSuccess("Passcode sent to your phone number successfully!");
+      setSuccess("Reset code requested. Check your email or WhatsApp; delivery may take a moment.");
       setStep(2);
     } catch (err) {
       setError(err?.message || "Failed to send passcode. Please try again.");
@@ -46,6 +47,7 @@ const ForgotPasswordPage = () => {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     
     // Validate password confirmation
     if (password !== confirmPassword) {
@@ -177,7 +179,7 @@ const ForgotPasswordPage = () => {
                 <input
                   type="text"
                   className="form-control"
-                  placeholder="Enter the passcode sent to your phone"
+                  placeholder="Enter the code received by email or WhatsApp"
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value)}
                   required

@@ -115,6 +115,9 @@ export const updateUser = async (payload) => {
 export const requestPasscode = async (payload) => {
     try {
         const response = await authAPI.requestPasscode(payload);
+        if (response.data?.Error !== false) {
+            throw new Error(response.data?.Message || 'The passcode request could not be accepted. Please try again.');
+        }
         return response.data;
     } catch (error) {
         const message = error.message || 'Failed to request passcode.';
@@ -125,6 +128,9 @@ export const requestPasscode = async (payload) => {
 export const confirmResetPassword = async (payload) => {
     try {
         const response = await authAPI.confirmResetPassword(payload);
+        if (response.data?.Error !== false) {
+            throw new Error(response.data?.Message || 'Password reset failed. Please check your passcode.');
+        }
         return response.data;
     } catch (error) {
         const message = error.message || 'Failed to reset password.';

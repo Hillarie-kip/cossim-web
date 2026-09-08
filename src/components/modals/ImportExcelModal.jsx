@@ -44,6 +44,16 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
     if (show) fetchDistributionCenters();
   }, [show, fetchDistributionCenters]);
 
+  useEffect(() => {
+    if (!show || showVendorInput) return;
+    const vendor = user?.AssignedVendor;
+    const code = vendor?.DefaultDCCode || vendor?.defaultDCCode;
+    if (code) setSelectedSortingCentre((current) => current || {
+      value: code,
+      label: `${vendor.DefaultDCName || vendor.defaultDCName || code} (${code})`,
+    });
+  }, [show, showVendorInput, user?.AssignedVendor]);
+
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -83,7 +93,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
     }
 
     if (!selectedSortingCentre) {
-      notify.error('Please select a sorting centre');
+      notify.error(showVendorInput ? 'Please select a sorting centre' : 'Your vendor has no assigned DC. Please contact support.');
       return;
     }
     
@@ -202,7 +212,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
             />
           </Form.Group>
 
-          <Form.Group className="mb-3">
+          {showVendorInput && (<Form.Group className="mb-3">
             <Form.Label>Sorting Centre <span className="text-danger">*</span></Form.Label>
             <Select
               name="selectedSortingCentre"
@@ -217,7 +227,7 @@ export const ImportExcelModal = ({ show, onClose, onUploadSuccess, showVendorInp
               isClearable
               isSearchable
             />
-          </Form.Group>
+          </Form.Group>)}
 
           <Form.Group className="mb-4">
             <Form.Label>Upload Filled Template <span className="text-danger">*</span></Form.Label>

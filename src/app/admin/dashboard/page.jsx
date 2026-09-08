@@ -78,10 +78,10 @@ export default function DashboardPage(){
     ["Failed / returned",number(readAnalyticsValue(summary,"FailedOrders",0)),`${Number(readAnalyticsValue(summary,"FailureRatePercentage",0)).toFixed(1)}% failure rate`,RotateCcw],
   ];
   const financialSummaryCards=[
-    ["Shipment fees",`KES ${number(readAnalyticsValue(summary,"TotalShipmentFees",0))}`,"Gross fees",PackageCheck],
-    ["COD exposure",`KES ${number(readAnalyticsValue(summary,"CashOnDeliveryAmount",0))}`,`${number(readAnalyticsValue(summary,"CashOnDeliveryOrders",0))} COD orders`,Box],
-    ["Average order value",`KES ${number(total?Number(readAnalyticsValue(summary,"TotalShipmentFees",0))/total:0)}`,"Per shipment",Ship],
-    ["SLA compliance",`${Number(readAnalyticsValue(readAnalyticsValue(scopedAnalytics,"SLASummary",{}),"SLACompliancePercentage",0)).toFixed(1)}%`,"Measured events",CheckCircle2],
+    ["Total COD",`KES ${money(readAnalyticsValue(summary,"TotalConfirmedCOD",0))}`,"Of orders confirmed",Box],
+    ["Total  COD",`KES ${money(readAnalyticsValue(summary,"TotalDeliveredCOD",0))}`,"of delivered orders",PackageCheck],
+    ["Remitted COD",`KES ${money(readAnalyticsValue(summary,"RemittedCOD",0))}`,"Settled or paid directly to vendor",Ship],
+    ["Remittance SLA",readAnalyticsValue(summary,"RemittanceSLAPercentage",null)==null?"N/A":`${Number(readAnalyticsValue(summary,"RemittanceSLAPercentage",0)).toFixed(1)}%`,"Delivered COD / remitted COD",CheckCircle2],
   ];
   const orderAmount=Number(readAnalyticsValue(summary,"OrderAmount",readAnalyticsValue(summary,"CashOnDeliveryAmount",0)));
   const paidAmount=Number(readAnalyticsValue(summary,"PaidAmount",0));

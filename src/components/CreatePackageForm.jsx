@@ -49,10 +49,12 @@ const loadGooglePlaces = () => {
 const getPlacePart = (place, type) =>
   place.address_components?.find((part) => part.types.includes(type))?.long_name || '';
 
-const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput = false, embedded = false, onClose, onComplete }) => {
+const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput: requestedShowVendorInput = false, embedded = false, onClose, onComplete }) => {
   const route = all_routes;
   const router = useRouter();
   const { user } = useAuth();
+  const roleCodes = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const showVendorInput = requestedShowVendorInput && !(roleCodes.has("R-008") && !roleCodes.has("R-001"));
   const [currentStep, setCurrentStep] = useState('form');
   const [createdOrder, setCreatedOrder] = useState(null);
 
@@ -425,6 +427,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
     label: `${dc.DCCode === 'DC-UB' ? 'KCS House' : dc.DCName} (${dc.DCCode})`
   }));
 
+  const vendorDefaultDC = user?.AssignedVendor?.DefaultDCCode || user?.AssignedVendor?.defaultDCCode;
+  if (!showVendorInput && vendorDefaultDC && !dcOptions.some((option) => option.value === vendorDefaultDC)) {
+    dcOptions.push({ value: vendorDefaultDC, label: user?.AssignedVendor?.DefaultDCName || user?.AssignedVendor?.defaultDCName || vendorDefaultDC });
+  }
+
   const activeVendorCode = isWalkIn ? '' : (formData.selectedVendor?.value || formData.selectedVendor?.vendor?.vendorCode || user?.AssignedVendor?.VendorCode || '');
   const matchingPricingRates = useMemo(() => {
     const activeRates = (Array.isArray(shipmentRates) ? shipmentRates : []).filter((rate) =>
@@ -456,6 +463,11 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   }, []);
 
   useEffect(() => {
+    if (!showVendorInput) {
+      const vendorDC = user?.AssignedVendor?.DefaultDCCode || user?.AssignedVendor?.defaultDCCode;
+      if (!formData.originDCCode && vendorDC) setFormData((current) => ({ ...current, originDCCode: vendorDC }));
+      return;
+    }
     if (formData.originDCCode || !assignedDistributionCenters.length) return;
     const kcsHouse = assignedDistributionCenters.find((dc) =>
       String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs house'))
@@ -464,7 +476,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
         String(dc.DCName ?? dc.dcName ?? '').trim().toLowerCase().includes('kcs sorting center'));
     const assignedDefault = kcsHouse || assignedDistributionCenters[0];
     if (assignedDefault) setFormData((current) => ({ ...current, originDCCode: assignedDefault.DCCode ?? assignedDefault.dcCode }));
-  }, [assignedDistributionCenters, formData.originDCCode]);
+  }, [assignedDistributionCenters, formData.originDCCode, showVendorInput, user?.AssignedVendor]);
 
   useEffect(() => {
     setFormData((current) => ({
@@ -1340,7 +1352,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                   )}
 
                   {/* Sorting area */}
-                  <div className="mb-4">
+                  {showVendorInput && (<div className="mb-4">
                     <Row>
                       <Col md={12} className="mb-3">
                         <Form.Label>Consolidation Centre</Form.Label>
@@ -1374,7 +1386,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
                         </Form.Text>
                       </Col>
                     </Row>
-                  </div>
+                  </div>)}
 
                   </div>
 

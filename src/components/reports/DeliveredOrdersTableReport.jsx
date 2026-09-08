@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { RoleType } from "@/constants/user-roles";
 import { RotateCcw } from "feather-icons-react";
 import Swal from "sweetalert2";
+import { uniqueShipmentOrders } from "@/utils/uniqueShipmentOrders";
 
 const money = (value) => Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const text = (value) => value || "-";
@@ -57,6 +58,7 @@ export default function DeliveredOrdersTableReport({
     search = searchTerm,
     forceRefresh = false,
   } = {}) => {
+    if ((isConsolidated || taskType === "lost") && isVendorOnly) { setRows([]); return; }
     const normalizedSearch = search.trim();
     setLoading(true);
     try {
@@ -106,7 +108,7 @@ export default function DeliveredOrdersTableReport({
       const responseRows = Array.isArray(response?.Data) ? response.Data : [];
       setRows(isConsolidated
         ? responseRows.filter((row) => [1, 3].includes(Number(row.StatusID)))
-        : responseRows);
+        : uniqueShipmentOrders(responseRows));
       setPagination({ current: Number(response?.PageNO || page), pageSize: Number(response?.PageSize || pageSize), total: Number(response?.TotalCount || 0) });
     } catch (error) {
       setRows([]);
@@ -214,6 +216,7 @@ export default function DeliveredOrdersTableReport({
   ].includes(column.title)), [exportColumns]);
 
   const fetchAllDataForExport = async (onProgress) => {
+    if ((isConsolidated || taskType === "lost") && isVendorOnly) return [];
     const pageSize = 1000;
     let page = 1;
     let allRows = [];
@@ -270,8 +273,10 @@ export default function DeliveredOrdersTableReport({
       page += 1;
     } while (allRows.length < total);
 
-    return allRows;
+    return isConsolidated ? allRows : uniqueShipmentOrders(allRows);
   };
+
+  if ((isConsolidated || taskType === "lost") && isVendorOnly) return <div className="content"><p>This report is not available in the vendor portal.</p></div>;
 
   return <div className="content">
     <div className="page-header">

@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import NextLink from "next/link";
 import FeatherIcon from "feather-icons-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { RoleType } from "@/constants/user-roles";
 import styles from "./MobileTaskNavigation.module.css";
 
 const TASK_ITEMS = [
@@ -23,6 +25,9 @@ const readStoredCounts = () => {
 };
 
 const MobileTaskNavigation = () => {
+  const { user } = useAuth();
+  const roles = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isVendorOnly = roles.has(RoleType.VENDOR) && !roles.has(RoleType.ADMIN);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTask = searchParams.get("task") || "deliver";
@@ -41,8 +46,8 @@ const MobileTaskNavigation = () => {
   };
 
   return (
-    <nav className={styles.navigation} aria-label="Task management navigation">
-      {TASK_ITEMS.map((item) => {
+    <nav className={styles.navigation} style={isVendorOnly ? { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" } : undefined} aria-label="Task management navigation">
+      {TASK_ITEMS.filter((item) => !isVendorOnly || !["receive", "dispatch"].includes(item.task)).map((item) => {
         const active = pathname === "/admin/packages" && currentTask === item.task;
         const nextParams = new URLSearchParams(searchParams.toString());
         nextParams.set("task", item.task);

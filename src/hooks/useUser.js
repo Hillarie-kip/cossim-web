@@ -129,7 +129,7 @@ export const useUser = () => {
 
       const response = await requestPasscode({ phoneNumber });
 
-      toast.success("Passcode sent successfully");
+      toast.success("Reset code requested. Check your email or WhatsApp.");
 
       return response;
     } catch (error) {

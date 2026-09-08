@@ -3,11 +3,17 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { getDefaultReportDates } from "@/utils/analyticsReportUtils";
+import { useAuth } from "@/contexts/AuthContext";
+import { RoleType } from "@/constants/user-roles";
 
 const GlobalFiltersContext = createContext(null);
 const STORAGE_KEY = "cossim-global-filters";
 
 export function GlobalFiltersProvider({ children }) {
+  const { user } = useAuth();
+  const roles = new Set((user?.AssignedRoles || []).map((role) => role.RoleTypeCode));
+  const isVendorOnly = roles.has(RoleType.VENDOR) && !roles.has(RoleType.ADMIN);
+  const vendorCode = user?.AssignedVendor?.VendorCode || user?.AssignedVendor?.vendorCode || user?.VendorCode || user?.vendorCode || "";
   const defaults = getDefaultReportDates();
   const [filters, setFilters] = useState({
     startDate: defaults.startDate,
@@ -36,7 +42,7 @@ export function GlobalFiltersProvider({ children }) {
   }, [filters]);
 
   const value = useMemo(() => ({
-    filters,
+    filters: isVendorOnly ? { ...filters, vendorCode, dcCode: "__ALL__", dcCodes: "__ALL__" } : filters,
     setFilter: (key, value) => setFilters((current) => {
       if (key === "dcCodes") {
         if (value === "__NONE__") return { ...current, dcCodes: "__NONE__", dcCode: "" };
@@ -47,7 +53,7 @@ export function GlobalFiltersProvider({ children }) {
       return { ...current, [key]: value };
     }),
     setFilters,
-  }), [filters]);
+  }), [filters, isVendorOnly, vendorCode]);
 
   return <GlobalFiltersContext.Provider value={value}>{children}</GlobalFiltersContext.Provider>;
 }

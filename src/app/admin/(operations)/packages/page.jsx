@@ -39,6 +39,7 @@ import { createFetchAllDataFunction } from "@/utils/tableExport";
 import { Modal } from "react-bootstrap";
 import CreatePackageForm from "@/components/CreatePackageForm";
 import { formatLocalDateOnly } from "@/lib/utils/dateFormat";
+import { prepareShipmentHistory } from "@/utils/shipmentHistory";
 import { exportColumns, pdfColumns } from "./components/tableColumns";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -116,6 +117,19 @@ const extractResponseList = (response) => {
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.Items)) return data.Items;
   return [];
+};
+
+const getUserHistoryNotes = (event) => {
+  const rawNotes = event?.UserNotes ?? event?.userNotes ?? event?.Notes ?? event?.notes ?? event?.Note ?? event?.note;
+  if (!rawNotes) return "-";
+
+  const notes = String(rawNotes).trim();
+  const explicitNotes = notes.match(/(?:^|;\s*)Notes:\s*(.+)$/i)?.[1]?.trim();
+  if (explicitNotes) return explicitNotes;
+
+  // Scheduled delivery notes are stored with a system-generated prefix.
+  const scheduledNotes = notes.match(/^Schedule\s+\d+:\s*(.+)$/i)?.[1]?.trim();
+  return scheduledNotes || notes;
 };
 
 const parsePackageFilterDate = (value) => {
@@ -355,6 +369,8 @@ const getOrderSlaTiming = (order) => {
   const difference = formatSlaNumber(differenceValue);
   const formattedThreshold = formatSlaNumber(thresholdValue);
   return {
+    elapsedMinutes: difference === null ? -1 : Number(differenceValue) * (
+      ["day", "days"].includes(normalizedUnit) ? 1440 : ["hour", "hours", "hr", "hrs"].includes(normalizedUnit) ? 60 : 1),
     difference: difference === null ? "-" : `${difference} ${abbreviateSlaUnit(rawUnit, differenceValue)}`.trim(),
     expected: expectedStage || (formattedThreshold === null ? "-" : `${formattedThreshold} ${abbreviateSlaUnit(rawUnit, thresholdValue)}`.trim()),
   };
@@ -419,7 +435,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [taskModule, setTaskModule] = useState(initialTask === "reverseReceive" ? "reverse" : "forward");
   // Both forward and reverse receipts are handed over as consolidated batches.
   // Reverse receipts are accepted as status 402 and then appear in Orders to Return.
-  const isReceiveTask = activeTask === "receive" || activeTask === "reverseReceive";
+  const isReceiveTask = !isVendorOnly && (activeTask === "receive" || activeTask === "reverseReceive");
   const [showDashboardBack, setShowDashboardBack] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
@@ -489,7 +505,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     fetchUsersByRole,
   } = useAdmin();
   const scopedVendorCode = isVendorOnly ? loggedInVendorCode : vendorCode;
-  const rawGlobalDCFilter = String(globalFilters.dcCodes || globalFilters.dcCode || "");
+  const rawGlobalDCFilter = isVendorOnly ? "__ALL__" : String(globalFilters.dcCodes || globalFilters.dcCode || "");
   const assignedDistributionCenters = useMemo(() => filterDistributionCentersToAssigned(user, distributionCenters), [user, distributionCenters]);
   const assignedGlobalDCCodes = assignedDistributionCenters
     .map((dc) => dc.DCCode || dc.dcCode)
@@ -564,7 +580,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         setDetailItems(extractResponseList(itemsResult.value));
       }
       if (historyResult.status === "fulfilled") {
-        setDetailHistory(extractResponseList(historyResult.value));
+        setDetailHistory(prepareShipmentHistory(extractResponseList(historyResult.value)));
       }
       setDetailDataLoading(false);
     }, 250);
@@ -577,7 +593,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   useEffect(() => {
     const destinationDCCodes = inboundDestinationScope.split(",").map((code) => code.trim()).filter(Boolean);
-    if (!destinationDCCodes.length) {
+    if (isVendorOnly || !destinationDCCodes.length) {
       setAllInboundBatches([]);
       setInboundBatches([]);
       setInboundBatchTotal(0);
@@ -637,7 +653,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       if (active) setInboundBatchesLoading(false);
     });
     return () => { active = false; };
-  }, [searchTerm, startDate, endDate, inboundDestinationScope]);
+  }, [searchTerm, startDate, endDate, inboundDestinationScope, isVendorOnly]);
 
   useEffect(() => {
     if (!isReceiveTask) return;
@@ -647,6 +663,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   }, [activeTask, allInboundBatches, isReceiveTask]);
 
   const loadOutboundBatches = async (pageNo = outboundBatchPage) => {
+    if (isVendorOnly) { setOutboundBatches([]); setOutboundBatchTotal(0); return; }
     if (!shipmentScopeDCCodes && !isVendorOnly) {
       setOutboundBatches([]);
       setOutboundBatchTotal(0);
@@ -680,7 +697,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   useEffect(() => {
     if (["deliver", "dispatch", "forwardReverse"].includes(activeTask)) loadOutboundBatches(outboundBatchPage);
-  }, [activeTask, shipmentScopeDCCodes, outboundBatchPage, outboundBatchPageSize, startDate, endDate, debouncedOutboundBatchSearch]);
+  }, [activeTask, shipmentScopeDCCodes, outboundBatchPage, outboundBatchPageSize, startDate, endDate, debouncedOutboundBatchSearch, isVendorOnly]);
 
   // Cached responses can briefly expose the full API envelope instead of its
   // Data array. Keep rendering resilient while the fresh request replaces it.
@@ -721,7 +738,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       countOnly: true,
       requireDCScope: true,
       vendorCode: scopedVendorCode || undefined,
-      toDCCode: toDCCode || undefined,
+      toDCCode: isVendorOnly ? "__ALL__" : toDCCode || undefined,
       onlyActive,
       startDate: formatLocalDateOnly(startDate),
       endDate: formatLocalDateOnly(endDate),
@@ -745,7 +762,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
     // reverseReceive is counted from inbound consolidated batches above, not
     // from the individual status-401 shipment rows.
-    const countTaskTypes = ["deliver", "dispatch", "confirmed", "forwardReverse", "reversed"];
+    const countTaskTypes = ["deliver", "confirmed", "forwardReverse", "reversed", ...(!isVendorOnly ? ["dispatch"] : [])];
     Promise.allSettled(countTaskTypes.map((taskType) => getShipmentOrders(taskCountParams(taskType)))).then((results) => {
       if (!active) return;
       setParentTaskCounts((current) => {
@@ -758,7 +775,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     });
 
     return () => { active = false; };
-  }, [vendorCode, fromDCCode, toDCCode, onlyActive, startDate, endDate, distributionCenterList, shipmentScopeDCCodes, clearShipmentOrder]);
+  }, [vendorCode, fromDCCode, toDCCode, onlyActive, startDate, endDate, distributionCenterList, shipmentScopeDCCodes, clearShipmentOrder, isVendorOnly, loggedInVendorCode]);
 
   const taskCounts = parentTaskCounts;
   useEffect(() => {
@@ -769,7 +786,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const taskOrders = useMemo(
     () => [...shipmentOrderList].sort((a, b) => {
         const slaDifference = getOrderSlaState(a).priority - getOrderSlaState(b).priority;
-        return slaDifference || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
+        return slaDifference || getOrderSlaTiming(b).elapsedMinutes - getOrderSlaTiming(a).elapsedMinutes
+          || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
       }),
     [shipmentOrderList]
   );
@@ -910,11 +928,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     orderBy: "DateAdded",
     sortDir: "ASC",
     ...requestOverrides,
+    vendorCode: isVendorOnly ? loggedInVendorCode : (requestOverrides.vendorCode || scopedVendorCode || undefined),
     startDate: formatLocalDateOnly(requestOverrides.startDate || startDate),
     fromDCCode: isDispatchTask ? shipmentScopeDCCodes : undefined,
     toDCCode: isDispatchTask
       ? undefined
-      : (requestOverrides.toDCCode || toDCCode || undefined),
+      : (isVendorOnly ? "__ALL__" : requestOverrides.toDCCode || toDCCode || undefined),
     vendorCategoryCode: undefined,
     taskType,
     checkSLA: !["confirmed", "reversed"].includes(taskType),
@@ -943,7 +962,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const nextEndDate = parsePackageFilterDate(globalFilters.endDate);
     const nextVendorCode = isVendorOnly ? loggedInVendorCode : (globalFilters.vendorCode || "");
     const availableCodes = new Set(dcOptions.map((option) => option.value));
-    const nextDCCode = normalizeDCScope(globalFilters.dcCodes || globalFilters.dcCode, availableCodes);
+    const nextDCCode = isVendorOnly ? "__ALL__" : normalizeDCScope(globalFilters.dcCodes || globalFilters.dcCode, availableCodes);
     const datesChanged = formatLocalDateOnly(startDate) !== formatLocalDateOnly(nextStartDate)
       || formatLocalDateOnly(endDate) !== formatLocalDateOnly(nextEndDate);
     const vendorChanged = vendorCode !== nextVendorCode;
@@ -979,13 +998,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       : (queryFilters.vendorCode || globalFilters.vendorCode || "");
     const requestedDCCode = queryFilters.toDCCode || globalFilters.dcCodes || globalFilters.dcCode || "";
     const availableCodes = new Set(dcOptions.map((option) => option.value));
-    const effectiveDCCode = normalizeDCScope(requestedDCCode, availableCodes);
-    const resolvedInitialTask = queryFilters.task === "reverse-orders"
+    const effectiveDCCode = isVendorOnly ? "__ALL__" : normalizeDCScope(requestedDCCode, availableCodes);
+    let resolvedInitialTask = queryFilters.task === "reverse-orders"
       ? "reversed"
       : ["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed", "reverseReceive"].includes(queryFilters.task)
         ? queryFilters.task
         : (["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed", "reverseReceive"].includes(initialTask) ? initialTask : "deliver");
 
+    if (isVendorOnly && ["receive", "dispatch", "reverseReceive"].includes(resolvedInitialTask)) resolvedInitialTask = "deliver";
     setActiveTask(resolvedInitialTask);
     setTaskModule(queryFilters.task === "reverse-orders"
       ? "reverse"
@@ -1035,7 +1055,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [urlSearchParams, shipmentScopeDCCodes]);
+  }, [urlSearchParams, shipmentScopeDCCodes, isVendorOnly, loggedInVendorCode]);
 
   // Fetch all data for export, in small batches instead of one huge request,
   // reporting progress back to the export UI as each batch completes.
@@ -2224,6 +2244,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   // Handle delete package
   const handleDeletePackage = async (record) => {
+    if (isVendorOnly) return;
     const { value: notes } = await MySwal.fire({
       title: 'Delete Package',
       text: `Are you sure you want to delete package ${record.OrderNO}?`,
@@ -2488,7 +2509,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       width: 150,
       sorter: (a, b) => {
         const slaDifference = getOrderSlaState(a).priority - getOrderSlaState(b).priority;
-        return slaDifference || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
+        return slaDifference || getOrderSlaTiming(b).elapsedMinutes - getOrderSlaTiming(a).elapsedMinutes
+          || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
       },
       render: (value, record) => {
         const date = formatPackageDate(value);
@@ -2741,7 +2763,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               ["deliver", "Orders to Deliver"], ["forwardReverse", "Orders to Reverse"], ["confirmed", "Order Confirmed"], ["receive", "Orders to Receive"], ["dispatch", "Orders to Dispatch"],
             ] : [
               ["reversed", "Orders to Return"], ["reverseReceive", "Reversals to Receive"],
-            ]).map(([key, label]) => (
+            ]).filter(([key]) => !isVendorOnly || !["receive", "dispatch", "reverseReceive"].includes(key)).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -3021,7 +3043,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </div>
               </> : <div className="packages-detail-empty"><span className="packages-detail-empty-icon" aria-hidden="true">›</span><strong>RECEIVE</strong><small>CLICK A BATCH</small></div>}
             </aside>}
-            {(["deliver", "dispatch", "forwardReverse"].includes(activeTask)) && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className={`packages-detail-panel packages-consolidated-panel is-open ${mobileConsolidatedOpen ? "is-mobile-open" : ""}`} style={{ width: detailPanelWidth }} aria-label={activeTask === "deliver" ? "Reroute handovers" : activeTask === "forwardReverse" ? "Consolidated returns" : "Consolidated orders"}>
+            {!isVendorOnly && (["deliver", "dispatch", "forwardReverse"].includes(activeTask)) && !batchPanelMode && selectedRowKeys.length === 0 && !detailPanelOrder && <aside className={`packages-detail-panel packages-consolidated-panel is-open ${mobileConsolidatedOpen ? "is-mobile-open" : ""}`} style={{ width: detailPanelWidth }} aria-label={activeTask === "deliver" ? "Reroute handovers" : "Consolidated orders"}>
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
               <header className="packages-detail-header"><div><small>{activeTask === "deliver" ? "ORDERS TO DELIVER" : activeTask === "forwardReverse" ? "ORDERS TO REVERSE" : "ORDERS TO DISPATCH"}</small><h5>{activeTask === "deliver" ? "Pending Reroute Handovers" : activeTask === "forwardReverse" ? "Pending Return Handovers" : "Consolidated Orders"}</h5></div><button type="button" className="packages-mobile-panel-close" onClick={() => setMobileConsolidatedOpen(false)} aria-label="Close consolidated handovers"><X size={19} /></button></header>
               <div className="packages-detail-body" style={{ padding: "12px" }}>
@@ -3051,7 +3073,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 </> : <div className="text-center py-5 text-muted"><Layers size={28} className="mb-2" /><p className="mb-0">No consolidated batches awaiting action.</p></div>}
               </div>
             </aside>}
-            {(["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed"].includes(activeTask) || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label={selectedRowKeys.length ? `${activeTask === "dispatch" ? "Consolidate" : "Open actions for"} ${selectedRowKeys.length} selected ${isReceiveTask ? "batches" : "orders"}` : `Open ${activeTask} action`}>
+            {!isVendorOnly && (["confirmed", "deliver", "dispatch", "receive", "forwardReverse", "reversed"].includes(activeTask) || selectedRowKeys.length > 0) && !batchPanelMode && !receiveBatch && <button type="button" className="packages-mobile-selection-fab" onClick={openSelectedMobilePanel} aria-label="Open selected order actions">
               <Layers size={20} />
               <span>{selectedRowKeys.length
                 ? (activeTask === "dispatch" ? `Consolidate (${selectedRowKeys.length})` : `${selectedRowKeys.length} selected`)
@@ -3137,8 +3159,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <button type="button" className={detailView === "history" ? "active" : ""} onClick={() => setDetailView("history")}><i className="feather-clock" />History</button>
                     <button type="button" className={detailView === "items" ? "active" : ""} onClick={() => setDetailView("items")}><i className="feather-package" />Items</button>
                     {activeTask === "confirmed" && selectedRowKeys.length > 0 && <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>}
-                    <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>
-                    <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>
+                    {!isVendorOnly && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
+                    {!isVendorOnly && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>}
                   </div>
                   <div className="packages-detail-body">
                     {detailView === "general" && <>
@@ -3179,12 +3201,24 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     </section>}
                     {detailView === "history" && <section><h6>Tracking history</h6>
                       {detailDataLoading && detailHistory.length === 0 ? <p className="packages-detail-muted">Loading tracking history…</p> : detailHistory.length > 0 ? (
-                        <div className="packages-detail-history">
+                        <div className="packages-detail-history-list">
                           {[...detailHistory].sort((a, b) => new Date(b.EventTime || b.DateAdded || 0) - new Date(a.EventTime || a.DateAdded || 0)).map((event, index) => (
-                            <div className="packages-detail-history-item" key={event.EventID || `${event.StatusName}-${index}`}>
-                              <i aria-hidden="true" />
-                              <div><strong>{event.StatusName || event.StatusCode || "Shipment update"}</strong><small>{formatPackageDate(event.EventTime || event.DateAdded)?.toLocaleString("en-GB") || "-"}</small>{event.Description && <p>{event.Description}</p>}{event.DCName && <span>{event.DCName}</span>}</div>
-                            </div>
+                            <article className="packages-detail-history-step" key={event._historyKey || index}>
+                              <div className="packages-detail-history-rail" aria-hidden="true">
+                                <span className="packages-detail-history-node">{detailHistory.length - index}</span>
+                                {index < detailHistory.length - 1 && <span className="packages-detail-history-connector"><i className="feather-chevron-down" /></span>}
+                              </div>
+                              <div className="packages-detail-history-card">
+                                <div className="packages-detail-history-card-head">
+                                  <div><small>Step {detailHistory.length - index}</small><strong>{event.StatusName || event.StatusCode || "Shipment update"}</strong></div>
+                                  <time>{formatPackageDate(event.EventTime || event.DateAdded)?.toLocaleString("en-GB") || "-"}</time>
+                                </div>
+                                <div className="packages-detail-history-meta">
+                                  <div><small>Actioned by</small><span>{event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span></div>
+                                  <div><small>Notes</small><span>{getUserHistoryNotes(event)}</span></div>
+                                </div>
+                              </div>
+                            </article>
                           ))}
                         </div>
                       ) : <p className="packages-detail-muted">No tracking history found.</p>}
@@ -3309,17 +3343,23 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-detail-items-head { background: #f8fafc; color: #667085; font-size: 10px; font-weight: 800; text-transform: uppercase; }
         .packages-detail-items-row { border-top: 1px solid #edf0f4; color: #344054; font-size: 11px; }
         .packages-detail-items-row span { min-width: 0; overflow-wrap: anywhere; }
-        .packages-detail-history { display: flex; flex-direction: column; }
-        .packages-detail-history-item { position: relative; display: grid; grid-template-columns: 14px 1fr; gap: 10px; padding-bottom: 18px; }
-        .packages-detail-history-item > i { width: 10px; height: 10px; margin-top: 4px; border: 2px solid #ff6200; border-radius: 50%; background: #fff; z-index: 1; }
-        .packages-detail-history-item:not(:last-child)::before { content: ""; position: absolute; left: 4px; top: 14px; bottom: 0; width: 2px; background: #ffd9c2; }
-        .packages-detail-history-item strong,
-        .packages-detail-history-item small,
-        .packages-detail-history-item span { display: block; }
-        .packages-detail-history-item strong { color: #172b4d; font-size: 12px; }
-        .packages-detail-history-item small { margin-top: 3px; color: #98a2b3; font-size: 10px; }
-        .packages-detail-history-item p { margin: 5px 0 0; color: #667085; font-size: 11px; line-height: 1.45; }
-        .packages-detail-history-item span { margin-top: 4px; color: #667085; font-size: 10px; }
+        .packages-detail-history-list { display: flex; flex-direction: column; gap: 0; padding: 5px 2px 5px 0; }
+        .packages-detail-history-step { display: grid; grid-template-columns: 38px 1fr; gap: 12px; min-width: 0; }
+        .packages-detail-history-rail { position: relative; display: flex; align-items: center; flex-direction: column; }
+        .packages-detail-history-node { position: relative; z-index: 1; display: grid; width: 30px; height: 30px; place-items: center; border: 3px solid #fff; border-radius: 50%; background: #ff6200; box-shadow: 0 0 0 2px #ffb27f, 0 4px 8px rgba(255, 98, 0, .2); color: #fff; font-size: 11px; font-weight: 800; }
+        .packages-detail-history-connector { position: relative; display: flex; flex: 1; align-items: center; flex-direction: column; width: 2px; min-height: 28px; background: #ffc49e; color: #e85a00; }
+        .packages-detail-history-connector i { position: absolute; bottom: -3px; padding: 1px; background: #fff; font-size: 13px; }
+        .packages-detail-history-card { min-width: 0; margin-bottom: 14px; padding: 13px 14px; border: 1px solid #e7eaf0; border-left: 4px solid #ff8a43; border-radius: 9px; background: #fff; box-shadow: 0 4px 12px rgba(23, 43, 77, .05); }
+        .packages-detail-history-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+        .packages-detail-history-card-head div { min-width: 0; }
+        .packages-detail-history-card-head small { display: block; margin-bottom: 3px; color: #b54708; font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .packages-detail-history-card-head strong { display: block; color: #172b4d; font-size: 13px; line-height: 1.25; }
+        .packages-detail-history-card-head time { flex: 0 0 auto; color: #667085; font-size: 10px; text-align: right; }
+        .packages-detail-history-meta { display: grid; grid-template-columns: minmax(110px, .7fr) minmax(0, 1.5fr); gap: 14px; margin-top: 13px; padding-top: 10px; border-top: 1px solid #f2f4f7; }
+        .packages-detail-history-meta > div { min-width: 0; }
+        .packages-detail-history-meta small { display: block; margin-bottom: 3px; color: #98a2b3; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+        .packages-detail-history-meta span { display: block; color: #344054; font-size: 11px; overflow-wrap: anywhere; }
+        @media (max-width: 520px) { .packages-detail-history-step { grid-template-columns: 32px 1fr; gap: 8px; } .packages-detail-history-node { width: 26px; height: 26px; font-size: 10px; } .packages-detail-history-card { padding: 11px; } .packages-detail-history-card-head { flex-direction: column; gap: 5px; } .packages-detail-history-card-head time { text-align: left; } .packages-detail-history-meta { grid-template-columns: 1fr; gap: 9px; } }
         .packages-detail-item { display: grid; grid-template-columns: minmax(100px, 38%) 1fr; gap: 14px; padding: 7px 0; }
         .packages-detail-item small { color: #7a8495; }
         .packages-detail-item span { color: #172b4d; overflow-wrap: anywhere; }

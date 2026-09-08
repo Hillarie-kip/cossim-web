@@ -22,7 +22,9 @@ const Sidebar = () => {
         .filter((section) => !["Finance", "General"].includes(section.label))
         .map((section) => section.label === "Operations"
           ? { ...section, submenuItems: section.submenuItems.filter((item) => item.label === "Task Management") }
-          : section)
+          : section.label === "Reports"
+            ? { ...section, submenuItems: section.submenuItems.filter((item) => !["/admin/reports/consolidated-orders", "/admin/reports/lost-items"].includes(item.link)) }
+            : section)
     : SidebarData;
 
   const closeMobileSidebar = () => {
