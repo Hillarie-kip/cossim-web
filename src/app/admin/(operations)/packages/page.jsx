@@ -132,11 +132,15 @@ const getUserHistoryNotes = (event) => {
   return scheduledNotes || notes;
 };
 
-const getHistoryStatus = (event, dcOptions = []) => {
+const getHistoryStatus = (event, dcOptions = [], order = null) => {
   const status = event?.StatusName || event?.StatusCode || "Shipment update";
-  const locationCode = event?.ToDCCode || event?.DestinationDCCode || event?.DCCode;
+  const isTransit = /(?:in transit|transfer inbound).*\bto\s+DC/i.test(String(status));
+  const locationCode = isTransit
+    ? order?.DestinationDCCode || order?.ToDCCode || event?.ToDCCode || event?.DestinationDCCode
+    : event?.ToDCCode || event?.DestinationDCCode || event?.DCCode;
   const locationOption = dcOptions.find((option) => option.value === locationCode);
   const location = locationOption?.label?.replace(new RegExp(`\\s*\\(${locationCode}\\)$`), "")
+    || (isTransit ? order?.DestinationDCName || order?.ToDCName : null)
     || event?.ToDCName
     || event?.DestinationDCName
     || event?.DCName
@@ -3307,7 +3311,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     {detailView === "history" && <section><h6>Tracking history</h6>
                       {detailDataLoading && detailHistory.length === 0 ? <p className="packages-detail-muted">Loading tracking history…</p> : detailHistory.length > 0 ? (
                         <div className="packages-detail-history-list">
-                          {[...detailHistory].sort((a, b) => new Date(b.EventTime || b.DateAdded || 0) - new Date(a.EventTime || a.DateAdded || 0)).map((event, index) => (
+                          {[...detailHistory].sort((a, b) => {
+                            const timeDifference = new Date(b.EventTime || b.DateAdded || 0) - new Date(a.EventTime || a.DateAdded || 0);
+                            return timeDifference
+                              || Number(b.SequenceNo || 0) - Number(a.SequenceNo || 0)
+                              || Number(b.EventID || 0) - Number(a.EventID || 0);
+                          }).map((event, index) => (
                             <article className="packages-detail-history-step" key={event._historyKey || index}>
                               <div className="packages-detail-history-rail" aria-hidden="true">
                                 <span className="packages-detail-history-node" />
@@ -3315,7 +3324,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                               </div>
                               <div className="packages-detail-history-content">
                                 <div className="packages-detail-history-main">
-                                  <strong>{getHistoryStatus(event, dcOptions)}</strong>
+                                  <strong>{getHistoryStatus(event, dcOptions, detailPanelOrder)}</strong>
                                   <div className="packages-detail-history-details">
                                     <span>Actioned by: {event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span>
                                     {isHistoryAttempt(event) && <span>Notes: {getUserHistoryNotes(event)}</span>}
@@ -3454,14 +3463,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-detail-history-node { position: relative; z-index: 1; width: 16px; height: 16px; margin-top: 4px; border: 3px solid #fff; border-radius: 50%; background: #333; box-shadow: 0 0 0 1px #333; }
         .packages-detail-history-step:first-child .packages-detail-history-node { background: #8a245c; box-shadow: 0 0 0 8px #f3e8ef; }
         .packages-detail-history-connector { flex: 1; width: 1px; min-height: 18px; border-left: 2px dashed #c9c9c9; }
-        .packages-detail-history-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(125px, 180px); gap: 18px; min-width: 0; padding: 8px 0 17px; border-bottom: 1px solid #e5e5e5; }
+        .packages-detail-history-content { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 14px; min-width: 0; padding: 8px 0 17px; border-bottom: 1px solid #e5e5e5; }
         .packages-detail-history-main { min-width: 0; }
         .packages-detail-history-main > strong { display: block; color: #292929; font-size: 15px; font-weight: 500; line-height: 1.25; }
         .packages-detail-history-details { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 5px; color: #4f4f4f; font-size: 11px; line-height: 1.35; }
         .packages-detail-history-details span { min-width: 0; overflow-wrap: anywhere; }
         .packages-detail-history-content time { display: flex; align-items: flex-start; justify-content: flex-end; gap: 8px; color: #4f4f4f; font-size: 11px; line-height: 1.25; text-align: right; }
         .packages-detail-history-content time i { color: #999; font-size: 15px; }
-        @media (max-width: 520px) { .packages-detail-history-step { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; } .packages-detail-history-content { grid-template-columns: minmax(0, 1fr) 118px; gap: 8px; } .packages-detail-history-main > strong { font-size: 13px; } .packages-detail-history-details { display: block; } .packages-detail-history-details span { display: block; margin-top: 3px; } }
+        @media (max-width: 520px) { .packages-detail-history-step { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; } .packages-detail-history-content { grid-template-columns: minmax(0, 1fr) 118px; gap: 8px; } .packages-detail-history-main > strong { font-size: 13px; } }
         .packages-detail-item { display: grid; grid-template-columns: minmax(100px, 38%) 1fr; gap: 14px; padding: 7px 0; }
         .packages-detail-item small { color: #7a8495; }
         .packages-detail-item span { color: #172b4d; overflow-wrap: anywhere; }
