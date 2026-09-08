@@ -35,6 +35,7 @@ export default function DCBatchScan() {
   const inputRef = useRef(null);
   const autoSubmitTimeoutRef = useRef(null);
   const submitLockRef = useRef(false);
+  const scanQueueRef = useRef([]);
 
   const {
     fetchShipmentOrder,
@@ -50,6 +51,7 @@ export default function DCBatchScan() {
 
   const [scanInput, setScanInput] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [scanQueue, setScanQueue] = useState([]);
 
   const [results, setResults] = useState([]);
   const [scannedOrderNOs, setScannedOrderNOs] = useState(new Set());
@@ -113,7 +115,12 @@ export default function DCBatchScan() {
       // Synchronous lock — React state (processing) updates are batched/async,
       // so two near-simultaneous triggers (auto-submit timeout + scanner's Enter
       // keypress) can both read stale state and slip past a state-only guard.
-      if (!orderNO || submitLockRef.current) return;
+      if (!orderNO) return;
+      if (submitLockRef.current) {
+        scanQueueRef.current.push(orderNO);
+        setScanQueue((current) => [...current, orderNO]);
+        return;
+      }
       submitLockRef.current = true;
 
       if (autoSubmitTimeoutRef.current) {
@@ -209,6 +216,12 @@ export default function DCBatchScan() {
       } finally {
         setProcessing(false);
         submitLockRef.current = false;
+
+        const nextScan = scanQueueRef.current.shift();
+        if (nextScan) {
+          setScanQueue((current) => current.slice(1));
+          setTimeout(() => processBarcode(nextScan), 0);
+        }
 
         setTimeout(() => inputRef.current?.focus(), 50);
       }
@@ -452,7 +465,7 @@ export default function DCBatchScan() {
               </Card.Header>
 
               <Card.Body className="p-4">
-                <InputGroup>
+              <InputGroup>
                   <CameraScanInput onScan={setScanInput}>{({ onFocus }) => <Form.Control
                     ref={inputRef}
                     type="text"
@@ -476,8 +489,10 @@ export default function DCBatchScan() {
                     ) : (
                       "Scan"
                     )}
-                  </Button>
-                </InputGroup>
+                </Button>
+              </InputGroup>
+              {(processing || scanQueue.length > 0) && <div className="small text-primary mt-2">Processing current scan{scanQueue.length ? `; ${scanQueue.length} queued` : ""}</div>}
+              {scanQueue.length > 0 && <div className="small text-muted mt-1 text-truncate" title={scanQueue.join(", ")}>Queue: {scanQueue.join(", ")}</div>}
 
                 <small className="text-muted mt-2 d-block">
                   Auto-submits when code reaches 20 characters or scanner sends Enter.

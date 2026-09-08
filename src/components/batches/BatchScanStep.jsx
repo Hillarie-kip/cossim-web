@@ -35,6 +35,7 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
   const inputRef = useRef(null);
   const autoSubmitTimeoutRef = useRef(null);
   const submitLockRef = useRef(false);
+  const scanQueueRef = useRef([]);
   const { fetchShipmentOrder } = useShipment();
 
   const [selectedOrders, setSelectedOrders] = useState(initialOrders);
@@ -53,6 +54,7 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
   );
   const [scanInput, setScanInput] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [scanQueue, setScanQueue] = useState([]);
   const [activeFilter, setActiveFilter] = useState("all");
   const allowedOrders = useMemo(() => new Set(allowedOrderNumbers), [allowedOrderNumbers]);
 
@@ -93,7 +95,12 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
       // Synchronous lock — React state (processing) updates are batched/async,
       // so two near-simultaneous triggers (auto-submit timeout + scanner's Enter
       // keypress) can both read stale state and slip past a state-only guard.
-      if (!orderNO || submitLockRef.current) return;
+      if (!orderNO) return;
+      if (submitLockRef.current) {
+        scanQueueRef.current.push(orderNO);
+        setScanQueue((current) => [...current, orderNO]);
+        return;
+      }
       submitLockRef.current = true;
 
       if (autoSubmitTimeoutRef.current) {
@@ -180,6 +187,13 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
       } finally {
         setProcessing(false);
         submitLockRef.current = false;
+
+        const nextScan = scanQueueRef.current.shift();
+        if (nextScan) {
+          setScanQueue((current) => current.slice(1));
+          setTimeout(() => processBarcode(nextScan), 0);
+        }
+
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
@@ -372,6 +386,8 @@ export default function BatchScanStep({ form, initialOrders = [], onNext, onBack
                 )}
               </Button>
             </InputGroup>
+            {(processing || scanQueue.length > 0) && <div className="small text-primary mt-2">Processing current scan{scanQueue.length ? `; ${scanQueue.length} queued` : ""}</div>}
+            {scanQueue.length > 0 && <div className="small text-muted mt-1 text-truncate" title={scanQueue.join(", ")}>Queue: {scanQueue.join(", ")}</div>}
 
             <div className={styles.scanHint}>
               <Zap size={11} />

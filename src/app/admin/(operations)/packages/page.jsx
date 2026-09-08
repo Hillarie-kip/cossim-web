@@ -479,6 +479,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [completedReceiveKeys, setCompletedReceiveKeys] = useState([]);
   const [lostOrderKeys, setLostOrderKeys] = useState([]);
   const [receiveScan, setReceiveScan] = useState("");
+  const [receiveScanQueue, setReceiveScanQueue] = useState([]);
+  const receiveScanQueueRef = useRef([]);
+  const receiveScanWorkerRef = useRef(false);
   const [showReceiveBatchModal, setShowReceiveBatchModal] = useState(false);
   const [batchPanelMode, setBatchPanelMode] = useState("");
   const [batchPanelOrders, setBatchPanelOrders] = useState([]);
@@ -489,6 +492,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [batchReceipt, setBatchReceipt] = useState(null);
   const [batchScan, setBatchScan] = useState("");
   const [batchScannedKeys, setBatchScannedKeys] = useState([]);
+  const [batchScanQueue, setBatchScanQueue] = useState([]);
   const batchScanQueueRef = useRef([]);
   const batchScanWorkerRef = useRef(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
@@ -1842,19 +1846,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (selectedAction) await handleDeliveryAction(selectedAction);
   };
 
-  const handleBatchPanelScan = (event) => {
+  const processBatchPanelScan = async (event, scanValue = batchScan) => {
     event.preventDefault();
-    const code = batchScan.trim().replace(/^.*?(PCK-[A-Z0-9-]+).*$/i, "$1").toUpperCase();
+    const code = scanValue.trim().replace(/^.*?(PCK-[A-Z0-9-]+).*$/i, "$1").toUpperCase();
     if (!code) return;
-    // Clear immediately so a slow lookup cannot erase the next barcode.
-    setBatchScan("");
     const match = batchPanelOrders.find((order) => String(order.OrderNO).toUpperCase() === code);
     if (match) {
       setBatchScannedKeys((current) => current.includes(match.OrderNO) ? current : [...current, match.OrderNO]);
       return;
     }
     if (batchPanelMode === "reversed") return notify.error("Package number is not in the selected orders");
-    fetchShipmentOrder({ orderNO: code }).then((response) => {
+    try {
+      const response = await fetchShipmentOrder({ orderNO: code });
       const responseData = response?.Data ?? response?.data ?? response;
       const order = Array.isArray(responseData) ? responseData[0] : responseData;
       if (!order?.OrderNO) return notify.error("Package not found");
@@ -1866,7 +1869,28 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       if (packageDC && outsideSelectedScope) return notify.error(`This package is at ${packageDC}, which is not among the selected DCs.`);
       setBatchPanelOrders((current) => current.some((item) => item.OrderNO === order.OrderNO) ? current : [...current, order]);
       setBatchScannedKeys((current) => current.includes(order.OrderNO) ? current : [...current, order.OrderNO]);
-    }).catch(() => {});
+    } catch (error) {
+      notify.error(error?.message || `Could not find package ${code}`);
+    }
+  };
+
+  const handleBatchPanelScan = (event) => {
+    event.preventDefault();
+    const scanValue = batchScan.trim();
+    if (!scanValue) return;
+    batchScanQueueRef.current.push(scanValue);
+    setBatchScanQueue((current) => [...current, scanValue]);
+    setBatchScan("");
+    if (batchScanWorkerRef.current) return;
+    batchScanWorkerRef.current = true;
+    void (async () => {
+      while (batchScanQueueRef.current.length) {
+        const nextScan = batchScanQueueRef.current.shift();
+        setBatchScanQueue((current) => current.slice(1));
+        await processBatchPanelScan({ preventDefault: () => {} }, nextScan);
+      }
+      batchScanWorkerRef.current = false;
+    })();
   };
 
   const handleConfirmedPickSubmit = async () => {
@@ -2094,11 +2118,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
   };
 
-  const handleReceiveScan = async (event) => {
+  const processReceiveScan = async (event, scanValue = receiveScan) => {
     event.preventDefault();
-    const code = receiveScan.trim().replace(/^.*?(PCK-[A-Z0-9-]+).*$/i, "$1");
+    const code = scanValue.trim().replace(/^.*?(PCK-[A-Z0-9-]+).*$/i, "$1");
+    if (!scanValue.trim()) return;
     if (!receiveBatch?.HandoverCode) {
-      const batch = inboundBatches.find((item) => String(item.HandoverCode).toUpperCase() === receiveScan.trim().toUpperCase());
+      const batch = inboundBatches.find((item) => String(item.HandoverCode).toUpperCase() === scanValue.trim().toUpperCase());
       if (batch) {
         await openReceivePanel(batch);
         return;
@@ -2108,6 +2133,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const responseData = response?.Data ?? response?.data ?? response;
         const order = Array.isArray(responseData) ? responseData[0] : responseData;
         if (!order?.OrderNO) return notify.error("Package not found");
+        if (Number(order.StatusID) === 201) return notify.error(`${order.OrderNO} has already been received`);
         const handoverCode = order.HandoverCode || order.LatestHandoverCode;
         const matchingBatch = handoverCode ? inboundBatches.find((item) => item.HandoverCode === handoverCode) : null;
         if (matchingBatch) {
@@ -2117,7 +2143,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           setReceiveBatch((current) => ({ ...(current || {}), IsBlindReceipt: true, ToDCCode: order.DestinationDCCode || order.LatestLogDCCode }));
           setReceiveItems((current) => current.some((item) => item.OrderNO === order.OrderNO) ? current : [...current, order]);
           setReceivedOrderKeys((current) => current.includes(order.OrderNO) ? current : [...current, order.OrderNO]);
-          setReceiveScan("");
           notify.success(`${order.OrderNO} added for receipt`);
         }
       } catch (error) {
@@ -2127,8 +2152,27 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
     const match = receiveItems.find((item) => String(item.OrderNO).toUpperCase() === code.toUpperCase());
     if (!match) return notify.error("Package number is not in this batch");
+    if (Number(match.OrderStatusID) === 201) return notify.error(`${match.OrderNO} has already been received`);
     setReceivedOrderKeys((current) => current.includes(match.OrderNO) ? current : [...current, match.OrderNO]);
+  };
+
+  const handleReceiveScan = (event) => {
+    event.preventDefault();
+    const scanValue = receiveScan.trim();
+    if (!scanValue) return;
+    receiveScanQueueRef.current.push(scanValue);
+    setReceiveScanQueue((current) => [...current, scanValue]);
     setReceiveScan("");
+    if (receiveScanWorkerRef.current) return;
+    receiveScanWorkerRef.current = true;
+    void (async () => {
+      while (receiveScanQueueRef.current.length) {
+        const nextScan = receiveScanQueueRef.current.shift();
+        setReceiveScanQueue((current) => current.slice(1));
+        await processReceiveScan({ preventDefault: () => {} }, nextScan);
+      }
+      receiveScanWorkerRef.current = false;
+    })();
   };
 
   const handleAcceptBatch = async (payload) => {
@@ -3128,6 +3172,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       <CameraScanInput onScan={setReceiveScan}>{({ onFocus }) => <input className="form-control" value={receiveScan} onChange={(event) => setReceiveScan(event.target.value)} onFocus={onFocus} placeholder={receiveBatch.HandoverCode ? "Scan or enter package number" : "Scan batch code or package ID"} autoFocus />}</CameraScanInput>
                       <button className="btn btn-primary" type="submit" disabled={!receiveScan.trim()}>Scan</button>
                     </form>
+                    {(receiveScanWorkerRef.current || receiveScanQueue.length > 0) && <div className="small text-primary mb-2">Processing scans{receiveScanQueue.length ? `; ${receiveScanQueue.length} queued` : ""}</div>}
+                    {receiveScanQueue.length > 0 && <div className="small text-muted mb-3 text-truncate" title={receiveScanQueue.join(", ")}>Queue: {receiveScanQueue.join(", ")}</div>}
                     {receiveItemsLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : (
                       <div className="list-group mb-3">
                         {receiveItems.map((item) => {
@@ -3217,6 +3263,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <h6>{batchPanelMode === "confirmed" ? "Pick and scan packages" : "Scan selected packages"}</h6>
                   {batchPanelMode === "confirmed" && <div className="d-flex align-items-start justify-content-between gap-2 mb-2"><p className="text-muted small mb-0">Scans are saved on this device until the pick is completed.</p>{batchScannedKeys.length > 0 && <button type="button" className="btn btn-link btn-sm text-danger p-0 flex-shrink-0" onClick={() => { window.localStorage.removeItem(pickScanStorageKey); setBatchPanelOrders([]); setBatchScannedKeys([]); }}>Clear saved scans</button>}</div>}
                   <form className="d-flex align-items-start gap-2 mb-3" onSubmit={handleBatchPanelScan}><CameraScanInput onScan={setBatchScan}>{({ onFocus }) => <input className="form-control" value={batchScan} onChange={(event) => setBatchScan(event.target.value)} onFocus={onFocus} placeholder="Scan or enter package number" />}</CameraScanInput><button type="submit" className="btn btn-primary" disabled={!batchScan.trim()}>Scan</button></form>
+                  {(batchScanWorkerRef.current || batchScanQueue.length > 0) && <div className="small text-primary mb-2">Processing scans{batchScanQueue.length ? `; ${batchScanQueue.length} queued` : ""}</div>}
+                  {batchScanQueue.length > 0 && <div className="small text-muted mb-3 text-truncate" title={batchScanQueue.join(", ")}>Queue: {batchScanQueue.join(", ")}</div>}
                   {batchPanelMode === "confirmed" && batchPanelOrders.length > 0 && <button type="button" className="btn btn-outline-primary w-100 mb-3" onClick={() => setBatchScannedKeys(batchPanelOrders.map((order) => order.OrderNO))}>Confirm All Manually</button>}
                   <div className="list-group mb-3">{batchPanelOrders.map((order) => {
                     const confirmed = batchScannedKeys.includes(order.OrderNO);
