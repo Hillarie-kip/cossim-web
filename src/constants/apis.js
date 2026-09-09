@@ -135,6 +135,8 @@ const apiRoutes = {
     getShipmentFieldSuggestions: `${API_BASE}/api/Shipment/GetShipmentFieldSuggestions`,
     deliveryType: `${API_BASE}/api/Shipment/GetDeliveryType`,
     createOrder: `${API_BASE}/api/Shipment/PostShipmentOrderTx`,
+    getOrderEdit: `${API_BASE}/api/Shipment/GetShipmentOrderEdit`,
+    saveOrderEdit: `${API_BASE}/api/Shipment/SaveShipmentOrderEdit`,
     getOrdersByVendor: `${API_BASE}/api/Shipment/GetShipmentOrdersByVendor`,
     getOrders: `${API_BASE}/api/Shipment/GetShipmentOrders`,
     getOrdersByDC: `${API_BASE}/api/Shipment/GetShipmentOrdersByDC`,

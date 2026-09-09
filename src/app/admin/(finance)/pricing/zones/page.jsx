@@ -61,10 +61,10 @@ export default function PriceZonesPage() {
             <div><Badge bg={Number(valueOf(zone, "StatusID", "statusID") ?? 1) === 1 ? "success" : "secondary"}>{Number(valueOf(zone, "StatusID", "statusID") ?? 1) === 1 ? "Active" : "Inactive"}</Badge></div>
           </div>
           <div className="table-responsive"><table className="table table-hover align-middle mb-0">
-            <thead><tr><th>Vendor</th><th>Package Size</th><th>Delivery Type</th><th>Price Type</th><th className="text-end">Rate Amount</th><th>Status</th></tr></thead>
+            <thead><tr><th>Vendor</th><th>Package Size</th><th>Rate Type</th><th>Delivery Type</th><th>Price Type</th><th className="text-end">Rate Amount</th><th>Status</th></tr></thead>
             <tbody>{pricing.length ? pricing.map((rate) => <tr key={rate.ShipmentRateID || rate.ShipmentRateNO}>
-              <td><strong>{rate.VendorName || "N/A"}</strong><div className="small text-muted">{rate.VendorCode || ""}</div></td><td>{rate.ShipmentRateSize || "N/A"}</td><td>{rate.DeliveryTypeName || rate.DeliveryTypeCode || "N/A"}</td><td>{rate.PriceType || "N/A"}</td><td className="text-end text-nowrap">KSh {Number(rate.RateAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td><Badge bg={Number(rate.StatusID) === 1 ? "success" : "secondary"}>{Number(rate.StatusID) === 1 ? "Active" : "Inactive"}</Badge></td>
-            </tr>) : <tr><td colSpan="6" className="text-center text-muted py-4">No pricing has been assigned to this zone.</td></tr>}</tbody>
+              <td><strong>{rate.VendorName || "N/A"}</strong><div className="small text-muted">{rate.VendorCode || ""}</div></td><td>{rate.ShipmentRateSize || "N/A"}</td><td>{rate.RateType === "RETURN" ? "Return" : "Order"}</td><td>{rate.DeliveryTypeName || rate.DeliveryTypeCode || "N/A"}</td><td>{rate.PriceType || "N/A"}</td><td className="text-end text-nowrap">KSh {Number(rate.RateAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td><Badge bg={Number(rate.StatusID) === 1 ? "success" : "secondary"}>{Number(rate.StatusID) === 1 ? "Active" : "Inactive"}</Badge></td>
+            </tr>) : <tr><td colSpan="7" className="text-center text-muted py-4">No pricing has been assigned to this zone.</td></tr>}</tbody>
           </table></div>
         </section>
       </div>)}</div>

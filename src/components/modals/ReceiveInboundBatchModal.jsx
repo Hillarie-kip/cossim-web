@@ -1,6 +1,8 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import Modal from "react-bootstrap/Modal";
+import styles from "./ReceiveInboundBatchModal.module.css";
 import SSRSelect from "@/components/SSRSelect";
 import { PACKAGE_STATUSES } from "@/constants/package_status";
 
@@ -77,16 +79,21 @@ const ReceiveInboundBatchModal = ({
   if (!show) return null;
 
   return (
-    <div className="modal show" style={{ display: "block", background: "rgba(0,0,0,0.3)" }}>
-      <div className="modal-dialog modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">
+    <Modal
+      show={show}
+      onHide={onClose}
+      centered
+      scrollable
+      className={styles.modal}
+      backdropClassName={styles.backdrop}
+      aria-labelledby="receive-batch-title"
+    >
+          <Modal.Header closeButton>
+            <Modal.Title as="h5" id="receive-batch-title">
               {handoverCode || batchCount ? "Accept Batch" : "Acknowledge Receipt"}
-            </h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body">
+            </Modal.Title>
+          </Modal.Header>
+          <Modal.Body className={styles.body}>
             {handoverCode && <div className="mb-3">
               <strong>Handover Code:</strong> <span className="text-muted">{handoverCode}</span>
             </div>}
@@ -134,7 +141,7 @@ const ReceiveInboundBatchModal = ({
                   ? "Any order not actually found in this handover will be marked as an exception. Submitting will close this handover batch."
                   : "Only the selected package IDs will be acknowledged as received."}
               </div>
-              <div className="d-flex justify-content-end gap-2">
+              <div className="d-flex flex-wrap justify-content-end gap-2">
                 <button type="button" className="btn btn-light" onClick={onClose} disabled={submitting}>
                   Cancel
                 </button>
@@ -147,10 +154,8 @@ const ReceiveInboundBatchModal = ({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      </div>
-    </div>
+          </Modal.Body>
+    </Modal>
   );
 };
 

@@ -378,7 +378,7 @@ const SettlementDetailPage = () => {
               <Card.Body>
                 <DollarSign size={24} className="text-success mb-2" />
                 <h6 className="card-title">Total Amount</h6>
-                <h4 className="text-success">{formatCurrency(settlementData?.totalAmount)}</h4>
+                <h4 className="text-success">{formatCurrency(settlementData?.totalAmount)}</h4><small className="d-block">Transfer fee: {formatCurrency(settlementData?.transferFee)}</small><small className="d-block">Before transfer fee: {formatCurrency(Number(settlementData?.totalAmount || 0) + Number(settlementData?.transferFee || 0))}</small>
               </Card.Body>
             </Card>
           </Col>

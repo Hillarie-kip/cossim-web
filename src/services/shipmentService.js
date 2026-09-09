@@ -1,6 +1,18 @@
 import { api } from "@/lib/apiClient";
 import apiRoutes from "@/constants/apis";
 
+export const getShipmentOrderEdit = async (orderNO) => {
+    const response = await api.get(`${apiRoutes.shipment.getOrderEdit}?${new URLSearchParams({ orderNO })}`);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Could not load package details.');
+    return response.data.Data;
+};
+
+export const saveShipmentOrderEdit = async (data) => {
+    const response = await api.post(apiRoutes.shipment.saveOrderEdit, data);
+    if (response.data?.Error) throw new Error(response.data.Message || 'Could not save package details.');
+    return response.data;
+};
+
 export const getShipmentProductNames = async (searchTerm = "", limit = 100) => {
     const params = new URLSearchParams();
     if (searchTerm.trim()) params.set("searchTerm", searchTerm.trim());

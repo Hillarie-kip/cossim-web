@@ -435,6 +435,7 @@ const CreatePackageForm = ({ backRoute = '', showBadges = false, showVendorInput
   const activeVendorCode = isWalkIn ? '' : (formData.selectedVendor?.value || formData.selectedVendor?.vendor?.vendorCode || user?.AssignedVendor?.VendorCode || '');
   const matchingPricingRates = useMemo(() => {
     const activeRates = (Array.isArray(shipmentRates) ? shipmentRates : []).filter((rate) =>
+      String(rate.RateType ?? rate.rateType ?? 'ORDER').toUpperCase() === 'ORDER' &&
       Number(rate.StatusID ?? rate.statusID ?? 1) === 1 &&
       String(rate.ShipmentRateSize ?? rate.shipmentRateSize ?? '').toUpperCase() === String(formData.shipmentSize || '').toUpperCase() &&
       String(rate.DeliveryTypeCode ?? rate.deliveryTypeCode ?? '').toUpperCase() === String(formData.deliveryTypeCode || '').toUpperCase());

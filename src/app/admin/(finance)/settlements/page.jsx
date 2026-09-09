@@ -175,6 +175,8 @@ const SettlementsList = () => {
 
   // Table columns configuration
   const columns = [
+    { title: "Transfer Fee", dataIndex: "transferFee", render: (value) => `KES ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` },
+    { title: "Return Cost", dataIndex: "returnCost", render: (value) => `KES ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` },
     {
       title: "Settlement NO",
       dataIndex: "settlementNO",

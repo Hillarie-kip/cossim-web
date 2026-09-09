@@ -1,0 +1,24 @@
+.modal {
+  /* Mobile package panels use 1100; the confirmation must cover them. */
+  z-index: 1120;
+}
+
+.backdrop {
+  z-index: 1110;
+}
+
+.body {
+  overflow-wrap: anywhere;
+}
+
+.modal :global(.modal-dialog-scrollable) {
+  height: calc(100vh - var(--bs-modal-margin) * 2);
+  height: calc(100dvh - var(--bs-modal-margin) * 2);
+}
+
+@media (max-width: 575.98px) {
+  .modal :global(.modal-header),
+  .body {
+    padding: 1rem;
+  }
+}

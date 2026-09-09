@@ -104,6 +104,7 @@ export const getActiveShipmentRate = async (params = {}) => {
         if (params.fromDCCode) queryParams.append('fromDCCode', params.fromDCCode);
         if (params.toDCCode) queryParams.append('toDCCode', params.toDCCode);
         if (params.deliveryTypeCode) queryParams.append('deliveryTypeCode', params.deliveryTypeCode);
+        if (params.rateType) queryParams.append('rateType', params.rateType);
         if (params.shipmentRateSize) queryParams.append('shipmentRateSize', params.shipmentRateSize);
         if (params.vendorCode) queryParams.append('vendorCode', params.vendorCode);
         if (params.roadKM !== undefined && params.roadKM !== null) queryParams.append('roadKM', params.roadKM);
@@ -136,6 +137,7 @@ export const getShipmentRates = async (params = {}) => {
         if (params.toDCCode) queryParams.append('toDCCode', params.toDCCode);
         if (params.deliveryTypeCode) queryParams.append('deliveryTypeCode', params.deliveryTypeCode);
         if (params.vendorCode) queryParams.append('vendorCode', params.vendorCode);
+        if (params.rateType) queryParams.append('rateType', params.rateType);
         if (params.shipmentRateSize) queryParams.append('shipmentRateSize', params.shipmentRateSize);
         if (params.priceType) queryParams.append('priceType', params.priceType);
 
@@ -392,8 +394,8 @@ export const getVendorSettlementOrders = async (vendorCode) => {
     return response.data;
 };
 
-export const initiateVendorSettlement = async ({ vendorCode, referenceNO, proof }) => {
-    const form = new FormData(); form.append('vendorCode', vendorCode); form.append('referenceNO', referenceNO); form.append('proof', proof);
+export const initiateVendorSettlement = async ({ vendorCode, referenceNO, proof, transferFee = 0 }) => {
+    const form = new FormData(); form.append('vendorCode', vendorCode); form.append('referenceNO', referenceNO); form.append('proof', proof); form.append('transferFee', transferFee);
     const response = await api.post(apiRoutes.finance.initiateVendorSettlement, form, { headers: { 'Content-Type': 'multipart/form-data' } });
     if (response.data?.Error) throw new Error(response.data.Message || 'Failed to initiate settlement');
     return response.data;

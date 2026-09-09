@@ -117,6 +117,7 @@ const prepareDataForExport = (data, columns) => {
 export const exportToPDF = async ({
   data,
   columns,
+  nestedTable = null,
   filename = 'table-export',
   title = 'Table Export',
   orientation = 'landscape',
@@ -187,9 +188,21 @@ export const exportToPDF = async ({
     const headers = exportableColumns.map(col => col.title);
     
     // Prepare table body
-    const body = processedData.map(row => 
-      exportableColumns.map(col => row[col.title] || '')
-    );
+    const body = processedData.flatMap((row, index) => {
+      const parent = exportableColumns.map(col => row[col.title] || '');
+      if (!nestedTable) return [parent];
+      const children = nestedTable.getRows(exportData[index]);
+      const childColumns = nestedTable.columns;
+      const nestedRow = (values, heading = false) => values.map((content, i) => ({
+        content,
+        colSpan: i === values.length - 1 ? exportableColumns.length - values.length + 1 : 1,
+        styles: { fillColor: heading ? [235, 238, 242] : [255, 255, 255], fontStyle: heading ? 'bold' : 'normal' },
+      }));
+      return [parent, nestedRow(childColumns.map(col => col.title), true),
+        ...(children.length ? children.map(child => nestedRow(childColumns.map(col =>
+          String(col.render ? col.render(child[col.dataIndex], child) : child[col.dataIndex] ?? '')
+        ))) : [[{ content: 'No products recorded', colSpan: exportableColumns.length }]])];
+    });
     
     // Generate table using autoTable
     autoTable(doc, {
@@ -250,6 +263,7 @@ export const exportToPDF = async ({
 export const exportToExcel = async ({
   data,
   columns,
+  nestedTable = null,
   filename = 'table-export',
   sheetName = 'Sheet1',
   fetchAllData = null,
@@ -277,7 +291,33 @@ export const exportToExcel = async ({
     const processedData = prepareDataForExport(exportData, columns);
     
     // Create worksheet
-    const worksheet = XLSX.utils.json_to_sheet(processedData);
+    let worksheet;
+    if (nestedTable) {
+      const parentColumns = getExportableColumns(columns);
+      const sheetRows = [parentColumns.map(col => col.title)];
+      const rowSettings = [{}];
+      exportData.forEach((record, index) => {
+        sheetRows.push(parentColumns.map(col => processedData[index][col.title]));
+        rowSettings.push({});
+        sheetRows.push(['Products', ...nestedTable.columns.map(col => col.title)]);
+        rowSettings.push({ level: 1 });
+        const children = nestedTable.getRows(record);
+        for (const child of children) {
+          sheetRows.push(['', ...nestedTable.columns.map(col => col.render
+            ? col.render(child[col.dataIndex], child) : child[col.dataIndex] ?? '')]);
+          rowSettings.push({ level: 1 });
+        }
+        if (!children.length) {
+          sheetRows.push(['', 'No products recorded']);
+          rowSettings.push({ level: 1 });
+        }
+      });
+      worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+      worksheet['!rows'] = rowSettings;
+      worksheet['!outline'] = { above: true };
+    } else {
+      worksheet = XLSX.utils.json_to_sheet(processedData);
+    }
     
     // Set column widths
     const exportableColumns = getExportableColumns(columns);

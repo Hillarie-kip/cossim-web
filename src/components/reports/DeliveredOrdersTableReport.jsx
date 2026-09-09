@@ -15,6 +15,18 @@ import { uniqueShipmentOrders } from "@/utils/uniqueShipmentOrders";
 
 const money = (value) => Number(value || 0).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const text = (value) => value || "-";
+const productExportTable = {
+  getRows: (order) => order.ShipmentOrderItems || order.shipmentOrderItems || [],
+  columns: [
+    ["Item code", "itemCode"], ["Product", "productName"],
+    ["Description", "description"], ["Weight", "weight"],
+    ["Product value", "productValue"], ["Fragile", "isFragile"],
+    ["Perishable", "isPerishable"], ["Remarks", "remarks"],
+  ].map(([title, key]) => ({ title, dataIndex: key, render: (_, item) => {
+    const value = item[key] ?? item[key[0].toUpperCase() + key.slice(1)];
+    return typeof value === "boolean" ? (value ? "Yes" : "No") : value ?? "";
+  } })),
+};
 const reportDateParts = (value) => {
   if (!value) return { date: "-", time: "" };
   const date = new Date(value);
@@ -168,6 +180,7 @@ export default function DeliveredOrdersTableReport({
     { title: "Vendor", dataIndex: "VendorName", width: 210, render: (_, row) => <div><strong>{text(row.VendorName || row.SenderCompanyName)}</strong><small className="d-block text-muted">{text(row.VendorCode)}</small></div> },
     { title: "Receiver", dataIndex: "ReceiverContactName", width: 260, render: (_, row) => <div><strong>{text(row.ReceiverContactName)}</strong><small className="d-block text-muted">{text(row.ReceiverContactPhone)}</small><small className="d-block text-muted">{text(row.ReceiverStreetName)}</small></div> },
     { title: "Origin / Destination", dataIndex: "OriginDCName", width: 230, render: (_, row) => <div><span className="d-block">From: <strong>{text(row.OriginDCName || row.OriginDCCode)}</strong></span><small className="d-block text-muted">To: {text(row.DestinationDCName || row.DestinationDCCode)}</small></div> },
+    { title: "Return cost", dataIndex: "ReturnCost", width: 110, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "Service fee", dataIndex: "ServiceFee", width: 105, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "COD / Paid / Balance", dataIndex: "CODAmount", width: 250, align: "right", render: (_, row) => <div><span className="d-block">COD: <strong>KES {money(row.CODAmount)}</strong></span><small className="d-block text-success">Paid: KES {money(row.PaidAmount)}</small><small className="d-block text-danger">Balance: KES {money(Math.max(0, Number(row.CODAmount || 0) - Number(row.PaidAmount || 0)))}</small><small className="d-block text-muted text-break">Ref: {text(row.PaymentTransactionRefs)}</small></div> },
     { title: "Date / Status", dataIndex: "DateAdded", width: 180, render: (value, row) => { const formatted = reportDateParts(value); const paymentDate = reportDateParts(row.PaymentDate); return <div><span className="d-block">{formatted.date}</span>{formatted.time && <small className="d-block">{formatted.time}</small>}<small className="d-block text-muted text-wrap">{text(row.StatusName || row.TaskManagementStatus)}</small>{row.PaymentDate && <small className="d-block text-success mt-1">Paid: {paymentDate.date}{paymentDate.time ? ` ${paymentDate.time}` : ""}</small>}</div>; } },
@@ -187,6 +200,7 @@ export default function DeliveredOrdersTableReport({
     { title: "Destination code", dataIndex: "DestinationDCCode" },
     { title: "Delivery type", dataIndex: "DeliveryType" },
     { title: "Service fee", dataIndex: "ServiceFee" },
+    { title: "Return cost", dataIndex: "ReturnCost" },
     { title: "COD", dataIndex: "CODAmount" },
     { title: "Paid amount", dataIndex: "PaidAmount" },
     { title: "Payment transaction refs", dataIndex: "PaymentTransactionRefs" },
@@ -291,6 +305,7 @@ export default function DeliveredOrdersTableReport({
             columns={exportColumns}
             pdfColumns={pdfColumns}
             excelColumns={exportColumns}
+            nestedTable={taskType === "completed" ? productExportTable : undefined}
             filename={title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "report"}
             title={title}
             fetchAllData={fetchAllDataForExport}

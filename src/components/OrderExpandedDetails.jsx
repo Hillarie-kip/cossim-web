@@ -88,8 +88,13 @@ export default function OrderExpandedDetails({ order }) {
   const removePayment = async (payment) => {
     const result = await Swal.fire({ title: "Delete payment?", text: payment.transactionID, icon: "warning", showCancelButton: true, confirmButtonText: "Delete", confirmButtonColor: "#dc3545" });
     if (!result.isConfirmed) return;
-    await deleteShipmentOrderPayment({ id: payment.shipmentOrderPaymentID, orderNO });
-    await loadPayments();
+    try {
+      await deleteShipmentOrderPayment({ id: payment.shipmentOrderPaymentID, orderNO });
+    } catch (error) {
+      notify.error(error.message || "Failed to delete payment");
+      return;
+    }
+    setPayments((current) => current.filter((row) => row.shipmentOrderPaymentID !== payment.shipmentOrderPaymentID));
     notify.success("Payment deleted");
   };
 

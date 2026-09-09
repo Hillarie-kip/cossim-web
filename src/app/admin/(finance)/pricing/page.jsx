@@ -58,7 +58,7 @@ const RoutePricingList = () => {
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
-    vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+    rateType: 'ORDER', vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
     basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
     fromDCCode: '',
     toDCCode: '',
@@ -143,6 +143,14 @@ const RoutePricingList = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.effectiveFrom || !formData.effectiveTo) {
+      notify.error('Effective from and effective to are required.');
+      return;
+    }
+    if (formData.effectiveFrom && formData.effectiveTo && formData.effectiveTo < formData.effectiveFrom) {
+      notify.error('Effective to must be on or after effective from.');
+      return;
+    }
     try {
       // Convert form data to match API requirements
       const submitData = {
@@ -165,7 +173,7 @@ const RoutePricingList = () => {
 
       setShowModal(false);
       setFormData({
-        vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+        rateType: 'ORDER', vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
         basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
         fromDCCode: '',
         toDCCode: '',
@@ -185,7 +193,7 @@ const RoutePricingList = () => {
   const handleCloseModal = () => {
     setShowModal(false);
     setFormData({
-      vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
+      rateType: 'ORDER', vendorCode: '', shipmentRateSize: '', priceType: 'FIXED', priceZoneID: '', zonePrices: {},
       basePrice: '', baseKM: '', pricePerKM: '', includeShippingFeeInCOD: false,
       fromDCCode: '',
       toDCCode: '',
@@ -229,6 +237,7 @@ const RoutePricingList = () => {
   };
 
   const columns = [
+    { title: "Rate Type", dataIndex: "RateType", render: (value) => value === "RETURN" ? "Return" : "Order" },
     {
       title: "Rate No",
       dataIndex: "ShipmentRateNO",

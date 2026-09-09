@@ -1,7 +1,7 @@
 "use client"
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, Row, Col, Badge, Button, Alert, Modal, Form, Table } from "react-bootstrap";
+import { Card, Row, Col, Badge, Button, Alert, Form, Table } from "react-bootstrap";
 import { ArrowLeft, Package, MapPin, Phone, Edit3, Trash2, Printer, RefreshCw, Navigation } from "feather-icons-react";
 import withReactContent from "sweetalert2-react-content";
 import Swal from "sweetalert2";
@@ -12,6 +12,8 @@ import { UpdateStatusModal } from "@/components/modals";
 import notify from "@/lib/toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { RoleType } from "@/constants/user-roles";
+import { getShipmentOrderEdit, saveShipmentOrderEdit } from "@/services/shipmentService";
+import { canEditPackage } from "@/utils/packageEditing";
 
 const PackageDetailPage = () => {
   const { user } = useAuth();
@@ -22,7 +24,13 @@ const PackageDetailPage = () => {
   const MySwal = withReactContent(Swal);
   const [packageData, setPackageData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [editDraft, setEditDraft] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editReady, setEditReady] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const editingOrderNO = editDraft?.OrderNO;
+  const isEditing = Boolean(editDraft && editDraft.OrderNO === params.id);
   const [showUpdateStatusModal, setShowUpdateStatusModal] = useState(false);
   const { showSizeSelectionModal, isGenerating } = useStickerDownload();
 
@@ -50,6 +58,85 @@ const PackageDetailPage = () => {
 
     fetchPackageDetails();
   }, [params.id, fetchShipmentOrder]);
+
+  useEffect(() => {
+    if (!editingOrderNO) return;
+    let active = true;
+    setEditLoading(true);
+    setEditReady(false);
+    getShipmentOrderEdit(editingOrderNO).then((data) => {
+      if (!active) return;
+      if (!canEditPackage(data)) {
+        setEditDraft(null);
+        setEditError("Only orders pending delivery can be edited.");
+        setPackageData((previous) => ({ ...previous, ...data }));
+        return;
+      }
+      setEditDraft(data);
+      setEditReady(true);
+    }).catch((err) => { if (active) setEditError(err.message); })
+      .finally(() => { if (active) setEditLoading(false); });
+    return () => { active = false; };
+  }, [editingOrderNO]);
+
+  const startEditing = () => {
+    if (!roleCodes.has(RoleType.FINANCE) || !canEditPackage(packageData)) return;
+    setEditError("");
+    setEditReady(false);
+    setEditDraft({ ...packageData });
+  };
+
+  const cancelEditing = () => {
+    setEditDraft(null);
+    setEditError("");
+    setEditReady(false);
+  };
+
+  const saveEditing = async (event) => {
+    event.preventDefault();
+    if (!editReady || editSaving || !roleCodes.has(RoleType.FINANCE) || !canEditPackage(editDraft)) return;
+    const updated = {
+      OrderNO: editDraft.OrderNO,
+      ReceiverContactName: editDraft.ReceiverContactName.trim(),
+      ReceiverContactPhone: editDraft.ReceiverContactPhone.trim(),
+      CODAmount: Number(editDraft.CODAmount),
+      ReceiverStreetName: editDraft.ReceiverStreetName || "",
+      ReceiverCity: editDraft.ReceiverCity || "",
+      DateUpdated: editDraft.DateUpdated,
+    };
+    setEditSaving(true);
+    setEditError("");
+    try {
+      await saveShipmentOrderEdit(updated);
+    } catch (err) {
+      setEditError(err.message || "Could not save package details.");
+      setEditSaving(false);
+      return;
+    }
+    setPackageData((previous) => ({ ...previous, ...updated }));
+    setEditDraft(null);
+    setEditSaving(false);
+    notify.success("Package updated successfully.");
+    await handleStatusUpdateSuccess();
+  };
+
+  const editInput = (key, label, maxLength, required = false) => (
+    <Form.Control
+      id={`edit-${key}`}
+      form="package-edit-form"
+      aria-label={label}
+      type={key === "CODAmount" ? "number" : key === "ReceiverContactPhone" ? "tel" : "text"}
+      value={editDraft[key] ?? ""}
+      required={required}
+      maxLength={maxLength}
+      min={key === "CODAmount" ? "0" : undefined}
+      max={key === "CODAmount" ? "999999999999.99" : undefined}
+      step={key === "CODAmount" ? "0.01" : undefined}
+      pattern={required && key !== "CODAmount" ? ".*\\S.*" : undefined}
+      disabled={editLoading || editSaving || !editReady}
+      onChange={(event) => setEditDraft((previous) => ({ ...previous, [key]: event.target.value }))}
+    />
+  );
 
   const getStatusBadge = (status) => {
     const statusMap = {
@@ -147,7 +234,7 @@ const PackageDetailPage = () => {
           <Alert variant="danger" className="text-center">
             <Package size={48} className="mb-3" />
             <h4>Package Not Found</h4>
-            <p>The package you're looking for doesn't exist or has been removed.</p>
+            <p>The requested package does not exist or has been removed.</p>
             <Link to="/admin/packages" className="btn btn-primary">
               <ArrowLeft size={16} className="me-2" />
               Back to Task Management
@@ -171,10 +258,6 @@ const PackageDetailPage = () => {
               <ArrowLeft size={16} className="me-2" />
               Back to Task Management
             </Link>
-            {!isVendorOnly && <Button variant="primary" onClick={() => setShowEditModal(true)}>
-              <Edit3 size={16} className="me-2" />
-              Edit Package
-            </Button>}
             <Link
               to={`/admin/packages/${packageData.OrderNO}/track?trackingNumber=${encodeURIComponent(packageData.OrderNO)}`}
               className="btn btn-outline-primary"
@@ -200,6 +283,9 @@ const PackageDetailPage = () => {
             </Button>}
           </div>
         </div>
+
+        {editError && <Alert variant="danger" role="alert">{editError}</Alert>}
+        {isEditing && <Form id="package-edit-form" onSubmit={saveEditing} />}
 
         <Row>
           {/* Package Status Card */}
@@ -229,8 +315,22 @@ const PackageDetailPage = () => {
 {/* Package Information */}
 <Col lg={8} className="mb-4">
   <Card>
-    <Card.Header>
+    <Card.Header className="d-flex justify-content-between align-items-center gap-2">
       <h5 className="mb-0">Package Information</h5>
+      {isEditing ? (
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          {editLoading && <small role="status">Loading latest details...</small>}
+          <Button variant="outline-secondary" size="sm" disabled={editSaving} onClick={cancelEditing}>Cancel</Button>
+          <Button type="submit" form="package-edit-form" size="sm" disabled={!editReady || editLoading || editSaving}>
+            {editSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      ) : roleCodes.has(RoleType.FINANCE) && canEditPackage(packageData) && (
+        <Button variant="outline-primary" size="sm" onClick={startEditing}>
+          <Edit3 size={16} className="me-2" />
+          Edit
+        </Button>
+      )}
     </Card.Header>
     <Card.Body>
       <Row>
@@ -329,10 +429,10 @@ const PackageDetailPage = () => {
             </Badge>
           </div>
 
-          {packageData.CashOnDeliveryRequired && (
+          {(packageData.CashOnDeliveryRequired || isEditing) && (
             <div className="mb-3">
               <label className="form-label text-muted">COD Amount</label>
-              <p className="fw-bold text-warning">
+              {isEditing ? editInput("CODAmount", "COD Amount (KSh)", undefined, true) : <p className="fw-bold text-warning">
                 KSh{" "}
                 {(
                   typeof packageData.CODAmount === "number"
@@ -341,7 +441,7 @@ const PackageDetailPage = () => {
                         (packageData.CODAmount || "0").toString().trim()
                       )
                 ).toFixed(2)}
-              </p>
+              </p>}
             </div>
           )}
 
@@ -464,29 +564,29 @@ const PackageDetailPage = () => {
           <div className="bg-info bg-opacity-10 p-2 rounded me-3">
             <Phone className="text-info" size={16} />
           </div>
-          <div>
+          <div className="flex-grow-1">
             <small className="text-muted">Name</small>
-            <p className="mb-0 fw-bold">
-              {packageData.CustomerName ||
-                packageData.ReceiverContactName ||
+            {isEditing ? editInput("ReceiverContactName", "Receiver Name", 100, true) : <p className="mb-0 fw-bold">
+              {packageData.ReceiverContactName ||
+                packageData.CustomerName ||
                 packageData.ReceiverCompanyName ||
                 "N/A"}
-            </p>
+            </p>}
           </div>
         </div>
 
-        {(packageData.CustomerPhone ||
+        {(isEditing || packageData.CustomerPhone ||
           packageData.ReceiverContactPhone) && (
           <div className="mt-2 d-flex align-items-center">
             <div className="bg-success bg-opacity-10 p-2 rounded me-3">
               <Phone className="text-success" size={16} />
             </div>
-            <div>
+            <div className="flex-grow-1">
               <small className="text-muted">Phone</small>
-              <p className="mb-0">
-                {packageData.CustomerPhone ||
-                  packageData.ReceiverContactPhone}
-              </p>
+              {isEditing ? editInput("ReceiverContactPhone", "Receiver Phone", 50, true) : <p className="mb-0">
+                {packageData.ReceiverContactPhone ||
+                  packageData.CustomerPhone}
+              </p>}
             </div>
           </div>
         )}
@@ -509,7 +609,15 @@ const PackageDetailPage = () => {
           </div>
         )}
 
-        {(packageData.CustomerAddress ||
+        {isEditing && (
+          <div className="mt-3">
+            <Form.Label htmlFor="edit-ReceiverStreetName">Street</Form.Label>
+            {editInput("ReceiverStreetName", "Receiver Street", 100)}
+            <Form.Label className="mt-2" htmlFor="edit-ReceiverCity">City</Form.Label>
+            {editInput("ReceiverCity", "Receiver City", 300)}
+          </div>
+        )}
+        {!isEditing && (packageData.CustomerAddress ||
           packageData.ReceiverApartment ||
           packageData.ReceiverBuilding ||
           packageData.ReceiverStreetName ||
@@ -585,79 +693,6 @@ const PackageDetailPage = () => {
           </Col>
         </Row>
 
-        {/* Edit Modal */}
-        <Modal show={!isVendorOnly && showEditModal} onHide={() => setShowEditModal(false)} size="lg">
-          <Modal.Header closeButton>
-            <Modal.Title>Edit Package</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <Form>
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Recipient Name</Form.Label>
-                    <Form.Control
-                      type="text"
-                      defaultValue={packageData.CustomerName || ''}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Recipient Phone</Form.Label>
-                    <Form.Control
-                      type="text"
-                      defaultValue={packageData.CustomerPhone || ''}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Status</Form.Label>
-                    <Form.Select defaultValue={packageData.StatusName || 'Created'}>
-                      <option value="Created">Created</option>
-                      <option value="In Transit">In Transit</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Cancelled">Cancelled</option>
-                      <option value="Returned">Returned</option>
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Delivery Cost</Form.Label>
-                    <Form.Control
-                      type="number"
-                      step="0.01"
-                      defaultValue={packageData.ServiceFee || 0}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={12}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Package Description</Form.Label>
-                    <Form.Control
-                      as="textarea"
-                      rows={3}
-                      defaultValue={packageData.Notes || packageData.ShipmentOrderItems?.[0]?.description || ''}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
-            </Form>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowEditModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={() => {
-              notify.success("Package updated successfully.");
-              setShowEditModal(false);
-            }}>
-              Save Changes
-            </Button>
-          </Modal.Footer>
-        </Modal>
         <UpdateStatusModal
           show={showUpdateStatusModal}
           onClose={() => setShowUpdateStatusModal(false)}

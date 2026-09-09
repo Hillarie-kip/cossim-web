@@ -230,7 +230,13 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
     : rawItems || '-';
 
   const notes        = packageData.Notes || '-';
-  const codAmount    = packageData.CODAmount ? `KSH ${packageData.CODAmount}` : '0';
+  const codValue = Number(packageData.CODAmount ?? packageData.CashOnDeliveryAmount ?? 0);
+  const serviceFee = Number(packageData.ServiceFee ?? packageData.serviceFee ?? 0);
+  const feeFlag = packageData.ServiceFeeinCOD ?? packageData.serviceFeeinCOD;
+  const feeIncluded = feeFlag === true || feeFlag === 1 || feeFlag === '1' || feeFlag === 'true';
+  const formatAmount = (value) => `KSH ${value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const codAmount = formatAmount(codValue);
+  const totalPayable = formatAmount(codValue + (feeIncluded ? 0 : serviceFee));
 
   // ── Sub-components ──────────────────────────────────────────────────────────
   const OrangeBar = ({ Icon: Ic, text }) => (
@@ -367,6 +373,8 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
                 <span style={{ fontSize: t.label, color: '#555', fontWeight: '700' }}>Cash On Delivery:</span>
                 <span style={{ fontSize: t.content, color: '#111' }}>{codAmount}</span>
               </div>
+              {!feeIncluded && <div style={{ fontSize: t.content, color: '#111' }}><strong>Delivery fee:</strong> {formatAmount(serviceFee)}</div>}
+              <div style={{ fontSize: t.content, color: '#111', fontWeight: '700' }}>Total payable: {totalPayable}</div>
             </div>
             {/* Right: Type badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

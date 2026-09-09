@@ -23,6 +23,7 @@ import RowActionsDropdown from "@/components/RowActionsDropdown";
 import SSRSelect from "@/components/SSRSelect";
 import { all_routes } from "@/Router/all_routes";
 import Datatable from "@/core/pagination/datatable";
+import ScanLookupQueue from "@/components/ScanLookupQueue";
 import useShipment from "@/hooks/useShipment";
 import { completeHandoverBatch, editHandoverBatch, getHandoverBatchList, getShipmentOrders, getShipmentOrderItems, getShipmentTimeline, postShipmentHandoverBatch, saveShipmentOrderPayment, uploadHandoverReceipt } from "@/services/shipmentService";
 import OrderExpandedDetails from "@/components/OrderExpandedDetails";
@@ -33,6 +34,7 @@ import useStickerDownload from "@/hooks/useStickerDownload";
 import { ImportExcelModal, ReceiveInboundBatchModal } from "@/components/modals";
 import { PACKAGE_STATUSES } from "@/constants/package_status";
 import { RoleType } from "@/constants/user-roles";
+import { canEditPackage } from "@/utils/packageEditing";
 import { checkStkPush, requestSTKPush } from "@/services/accountService";
 import TableExportIcons from "@/components/TableExportIcons";
 import { createFetchAllDataFunction } from "@/utils/tableExport";
@@ -478,8 +480,17 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [receivedOrderKeys, setReceivedOrderKeys] = useState([]);
   const [completedReceiveKeys, setCompletedReceiveKeys] = useState([]);
   const [lostOrderKeys, setLostOrderKeys] = useState([]);
+  const [receiveItemsTab, setReceiveItemsTab] = useState("pending");
+  const receivedItems = receiveItems.filter((item) => completedReceiveKeys.includes(item.OrderNO) || Number(item.OrderStatusID) === 201);
+  const pendingReceiveItems = receiveItems.filter((item) => !completedReceiveKeys.includes(item.OrderNO) && Number(item.OrderStatusID) !== 201 && !lostOrderKeys.includes(item.OrderNO));
+  const visibleReceiveItems = receiveItemsTab === "received" ? receivedItems : pendingReceiveItems;
+
+  useEffect(() => {
+    setReceiveItemsTab("pending");
+  }, [receiveBatch]);
   const [receiveScan, setReceiveScan] = useState("");
   const [receiveScanQueue, setReceiveScanQueue] = useState([]);
+  const [activeReceiveScan, setActiveReceiveScan] = useState(null);
   const receiveScanQueueRef = useRef([]);
   const receiveScanWorkerRef = useRef(false);
   const [showReceiveBatchModal, setShowReceiveBatchModal] = useState(false);
@@ -493,6 +504,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [batchScan, setBatchScan] = useState("");
   const [batchScannedKeys, setBatchScannedKeys] = useState([]);
   const [batchScanQueue, setBatchScanQueue] = useState([]);
+  const [activeBatchScan, setActiveBatchScan] = useState(null);
   const batchScanQueueRef = useRef([]);
   const batchScanWorkerRef = useRef(false);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
@@ -670,12 +682,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       }));
     }).then((enrichedBatches) => {
       if (!active) return;
-      const forwardBatches = enrichedBatches.filter((batch) => !batch._IsReverse);
-      setAllInboundBatches(enrichedBatches);
-      setParentTaskCounts((current) => ({
-        ...current,
-        receive: forwardBatches.length,
-        reverseReceive: enrichedBatches.length - forwardBatches.length,
+      setAllInboundBatches(enrichedBatches.filter((batch) => {
+        const total = Math.max(Number(batch.TotalItems ?? batch.ItemCount ?? batch.ItemsCount ?? batch.TotalOrders ?? 0), batch._LoadedItems || 0);
+        // Keep unknown/empty batches visible; only remove proven complete receipts.
+        return !(total > 0 && batch._ReceivedItems >= total);
       }));
     }).catch((batchError) => {
       if (active) notify.error(batchError?.message || "Failed to load inbound batches");
@@ -686,6 +696,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   }, [searchTerm, startDate, endDate, inboundDestinationScope, isVendorOnly]);
 
   useEffect(() => {
+    const forwardCount = allInboundBatches.filter((batch) => !batch._IsReverse).length;
+    setParentTaskCounts((current) => ({
+      ...current,
+      receive: forwardCount,
+      reverseReceive: allInboundBatches.length - forwardCount,
+    }));
     if (!isReceiveTask) return;
     const taskBatches = allInboundBatches.filter((batch) => activeTask === "reverseReceive" ? batch._IsReverse : !batch._IsReverse);
     setInboundBatches(taskBatches);
@@ -1887,7 +1903,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       while (batchScanQueueRef.current.length) {
         const nextScan = batchScanQueueRef.current.shift();
         setBatchScanQueue((current) => current.slice(1));
-        await processBatchPanelScan({ preventDefault: () => {} }, nextScan);
+        setActiveBatchScan(nextScan);
+        try {
+          await processBatchPanelScan({ preventDefault: () => {} }, nextScan);
+        } catch (error) {
+          notify.error(error?.message || `Could not look up ${nextScan}`);
+        } finally {
+          setActiveBatchScan(null);
+        }
       }
       batchScanWorkerRef.current = false;
     })();
@@ -2169,7 +2192,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       while (receiveScanQueueRef.current.length) {
         const nextScan = receiveScanQueueRef.current.shift();
         setReceiveScanQueue((current) => current.slice(1));
-        await processReceiveScan({ preventDefault: () => {} }, nextScan);
+        setActiveReceiveScan(nextScan);
+        try {
+          await processReceiveScan({ preventDefault: () => {} }, nextScan);
+        } catch (error) {
+          notify.error(error?.message || `Could not look up ${nextScan}`);
+        } finally {
+          setActiveReceiveScan(null);
+        }
       }
       receiveScanWorkerRef.current = false;
     })();
@@ -2188,6 +2218,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const selectedReceiveKeys = new Set(payload.Orders.map((order) => order.OrderNO));
     const isBatchFullyResolved = (batchItems) => batchItems.every((item) =>
       selectedReceiveKeys.has(item.OrderNO)
+      || [201, 402, 703].includes(Number(item.OrderStatusID))
       || completedReceiveKeys.includes(item.OrderNO)
       || lostOrderKeys.includes(item.OrderNO)
     );
@@ -2572,7 +2603,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               icon: "feather-eye",
               onClick: () => setDetailOrder(record),
             },
-            {
+            roleCodes.has(RoleType.FINANCE) && canEditPackage(record) && {
               key: "edit",
               label: "Edit",
               icon: "feather-edit",
@@ -2818,10 +2849,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       dataIndex: "DateAdded",
       width: 220,
       render: (value, record) => {
-        const date = formatPackageDate(value);
-        const sla = getOrderSlaState(record);
-        const timing = getOrderSlaTiming(record);
-        return <div className="packages-sla-date-cell"><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{timing.difference}</strong></div><span>Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
+        const order = record.MostUrgentOrder;
+        if (!order) return <span className="text-muted">SLA unavailable</span>;
+        const date = formatPackageDate(order.DateAdded);
+        const sla = getOrderSlaState(order);
+        const timing = getOrderSlaTiming(order);
+        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{timing.difference}</strong></div><span>Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
       },
     },
     {
@@ -2908,7 +2941,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           <div className="packages-task-toolbar">
           <div className="packages-task-tabs" role="tablist" aria-label="Shipment tasks">
             {(taskModule === "forward" ? [
-              ["deliver", "Orders to Deliver"], ["forwardReverse", "Orders to Reverse"], ["confirmed", "Order Confirmed"], ["receive", "Orders to Receive"], ["dispatch", "Orders to Dispatch"],
+              ["deliver", "Orders to Deliver"], ["forwardReverse", "Orders to Reverse"], ["confirmed", "Order Confirmed"], ["receive", "MU to Receive"], ["dispatch", "Orders to Dispatch"],
             ] : [
               ["reversed", "Orders to Return"], ["reverseReceive", "Reversals to Receive"],
             ]).filter(([key]) => !isVendorOnly || !["receive", "dispatch", "reverseReceive"].includes(key)).map(([key, label]) => (
@@ -2991,7 +3024,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <Layers className="me-2 iconsize" />
                   {activeTask === "reversed" ? "Return to Vendor" : activeTask === "forwardReverse" ? "Consolidate Return" : "Consolidate"}
                 </button>
-                {activeTask === "forwardReverse" && (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE)) && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to reverse">
+                {activeTask === "forwardReverse" && (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE)) && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for Orders to Reverse">
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                 </div>}
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
@@ -3154,14 +3187,14 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               </div>
             </div>
             {isReceiveTask && <aside
-              className={`packages-detail-panel ${receiveBatch ? "is-open" : "is-collapsed"}`}
+              className={`packages-detail-panel packages-receive-panel ${receiveBatch ? "is-open" : "is-collapsed"}`}
               style={{ width: receiveBatch ? detailPanelWidth : 76 }}
               aria-label="Receive batch"
             >
               <div className="packages-detail-resizer" onMouseDown={startDetailPanelResize} title="Drag to resize" />
               {receiveBatch ? <>
                 <header className="packages-detail-header">
-                  <div><small>{activeTask === "reverseReceive" ? "REVERSALS TO RECEIVE" : "ORDERS TO RECEIVE"}</small><h5>{receiveBatch.IsMultiBatch ? `${receiveBatch.Batches.length} selected batches` : receiveBatch.HandoverCode || (receiveBatch.IsBlindReceipt ? "Blind package receipt" : "Scan to receive")}</h5></div>
+                  <div><small>{activeTask === "reverseReceive" ? "REVERSALS TO RECEIVE" : "MU TO RECEIVE"}</small><h5>{receiveBatch.IsMultiBatch ? `${receiveBatch.Batches.length} selected batches` : receiveBatch.HandoverCode || (receiveBatch.IsBlindReceipt ? "Blind package receipt" : "Scan to receive")}</h5></div>
                   <button type="button" onClick={() => setReceiveBatch(null)} aria-label="Close receive panel"><X size={19} /></button>
                 </header>
                 <div className="packages-detail-body">
@@ -3172,11 +3205,15 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       <CameraScanInput onScan={setReceiveScan}>{({ onFocus }) => <input className="form-control" value={receiveScan} onChange={(event) => setReceiveScan(event.target.value)} onFocus={onFocus} placeholder={receiveBatch.HandoverCode ? "Scan or enter package number" : "Scan batch code or package ID"} autoFocus />}</CameraScanInput>
                       <button className="btn btn-primary" type="submit" disabled={!receiveScan.trim()}>Scan</button>
                     </form>
-                    {(receiveScanWorkerRef.current || receiveScanQueue.length > 0) && <div className="small text-primary mb-2">Processing scans{receiveScanQueue.length ? `; ${receiveScanQueue.length} queued` : ""}</div>}
-                    {receiveScanQueue.length > 0 && <div className="small text-muted mb-3 text-truncate" title={receiveScanQueue.join(", ")}>Queue: {receiveScanQueue.join(", ")}</div>}
+                    <ScanLookupQueue activeCode={activeReceiveScan} queuedCodes={receiveScanQueue} />
+                    <div className="packages-receive-tabs mb-3" role="group" aria-label="Filter packages by receipt status">
+                      <button type="button" className={receiveItemsTab === "pending" ? "is-active" : ""} aria-pressed={receiveItemsTab === "pending"} onClick={() => setReceiveItemsTab("pending")}>Pending <span>{receiveItemsLoading ? "…" : pendingReceiveItems.length}</span></button>
+                      <button type="button" className={receiveItemsTab === "received" ? "is-active" : ""} aria-pressed={receiveItemsTab === "received"} onClick={() => setReceiveItemsTab("received")}>Received <span>{receiveItemsLoading ? "…" : receivedItems.length}</span></button>
+                    </div>
                     {receiveItemsLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : (
                       <div className="list-group mb-3">
-                        {receiveItems.map((item) => {
+                        {!visibleReceiveItems.length && <p className="text-muted text-center py-3 mb-0">{receiveItemsTab === "received" ? "No packages received yet." : "No pending packages."}</p>}
+                        {visibleReceiveItems.map((item) => {
                           const isReceived = completedReceiveKeys.includes(item.OrderNO) || Number(item.OrderStatusID) === 201;
                           const isLost = lostOrderKeys.includes(item.OrderNO);
                           const isResolved = isReceived || isLost;
@@ -3263,8 +3300,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <h6>{batchPanelMode === "confirmed" ? "Pick and scan packages" : "Scan selected packages"}</h6>
                   {batchPanelMode === "confirmed" && <div className="d-flex align-items-start justify-content-between gap-2 mb-2"><p className="text-muted small mb-0">Scans are saved on this device until the pick is completed.</p>{batchScannedKeys.length > 0 && <button type="button" className="btn btn-link btn-sm text-danger p-0 flex-shrink-0" onClick={() => { window.localStorage.removeItem(pickScanStorageKey); setBatchPanelOrders([]); setBatchScannedKeys([]); }}>Clear saved scans</button>}</div>}
                   <form className="d-flex align-items-start gap-2 mb-3" onSubmit={handleBatchPanelScan}><CameraScanInput onScan={setBatchScan}>{({ onFocus }) => <input className="form-control" value={batchScan} onChange={(event) => setBatchScan(event.target.value)} onFocus={onFocus} placeholder="Scan or enter package number" />}</CameraScanInput><button type="submit" className="btn btn-primary" disabled={!batchScan.trim()}>Scan</button></form>
-                  {(batchScanWorkerRef.current || batchScanQueue.length > 0) && <div className="small text-primary mb-2">Processing scans{batchScanQueue.length ? `; ${batchScanQueue.length} queued` : ""}</div>}
-                  {batchScanQueue.length > 0 && <div className="small text-muted mb-3 text-truncate" title={batchScanQueue.join(", ")}>Queue: {batchScanQueue.join(", ")}</div>}
+                  <ScanLookupQueue activeCode={activeBatchScan} queuedCodes={batchScanQueue} />
                   {batchPanelMode === "confirmed" && batchPanelOrders.length > 0 && <button type="button" className="btn btn-outline-primary w-100 mb-3" onClick={() => setBatchScannedKeys(batchPanelOrders.map((order) => order.OrderNO))}>Confirm All Manually</button>}
                   <div className="list-group mb-3">{batchPanelOrders.map((order) => {
                     const confirmed = batchScannedKeys.includes(order.OrderNO);
@@ -3319,7 +3355,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <button type="button" className={detailView === "history" ? "active" : ""} onClick={() => setDetailView("history")}><i className="feather-clock" />History</button>
                     <button type="button" className={detailView === "items" ? "active" : ""} onClick={() => setDetailView("items")}><i className="feather-package" />Items</button>
                     {activeTask === "confirmed" && selectedRowKeys.length > 0 && <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>}
-                    {!isVendorOnly && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
+                    {roleCodes.has(RoleType.FINANCE) && canEditPackage(detailPanelOrder) && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
                     {!isVendorOnly && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>}
                   </div>
                   <div className="packages-detail-body">
@@ -3494,6 +3530,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         .packages-detail-actions button:disabled { opacity: .55; cursor: not-allowed; }
         .packages-detail-actions a > span { display: flex; align-items: center; justify-content: center; gap: 6px; }
         .packages-detail-body { flex: 1 1 auto; min-height: 0; padding: 20px; overflow-y: auto; background: #fff; }
+        .packages-receive-panel .packages-detail-header { flex: 0 0 auto; }
+        .packages-receive-panel .packages-detail-body { overscroll-behavior-y: contain; }
+        .packages-receive-tabs { display: flex; gap: 8px; }
+        .packages-receive-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; border: 1px solid #e7eaf0; border-radius: 8px; background: #fff; color: #667085; font-weight: 700; }
+        .packages-receive-tabs button.is-active { border-color: #ff6200; background: #fff4ec; color: #d94f00; }
+        .packages-receive-tabs button span { padding: 2px 7px; border-radius: 999px; background: #f2f4f7; font-size: 12px; }
+        .packages-receive-tabs button.is-active span { background: #ff6200; color: #fff; }
+        @media (min-width: 768px) {
+          .packages-receive-panel.is-open { height: calc(100dvh - 240px); min-height: 0; align-self: flex-start; }
+        }
         .packages-detail-empty { flex: 1 1 auto; min-height: 610px; width: 73px; display: flex; align-items: center; flex-direction: column; gap: 12px; padding-top: 20px; background: linear-gradient(180deg, #fff1e6 0%, #fffaf7 100%); color: #e85a00; cursor: help; }
         .packages-detail-empty-icon { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid #ffc49e; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(255, 98, 0, .14); font-size: 28px; font-weight: 800; line-height: 1; }
         .packages-detail-empty strong { writing-mode: vertical-rl; font-size: 12px; letter-spacing: .18em; }

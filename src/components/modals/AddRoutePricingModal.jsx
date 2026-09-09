@@ -23,19 +23,20 @@ const AddRoutePricingModal = ({ show, onHide, formData, onInputChange, onSubmit,
   const priceTypes = [{ value: "FIXED", label: "Fixed" }, { value: "ZONING", label: "Zone bands" }, { value: "PER_KM", label: "Per KM" }];
   const zones = (Array.isArray(priceZones) ? priceZones : []).map((zone) => ({ id: Number(valueOf(zone, "PriceZoneID", "priceZoneID", "priceZoneId")), name: valueOf(zone, "ZoneName", "zoneName") || "Unnamed zone", dcCodes: valueOf(zone, "DCCodes", "dcCodes") || [] }));
   const zonePrices = formData.zonePrices || {};
-  const canSubmit = formData.shipmentRateSize && formData.deliveryTypeCode && ((formData.priceType === "FIXED" && formData.rateAmount !== "") || (formData.priceType === "PER_KM" && formData.basePrice !== "" && formData.baseKM !== "" && formData.pricePerKM !== "") || (formData.priceType === "ZONING" && Object.values(zonePrices).some((value) => value !== "" && value !== null)));
+  const canSubmit = formData.shipmentRateSize && (formData.rateType === "RETURN" || formData.deliveryTypeCode) && ((formData.priceType === "FIXED" && formData.rateAmount !== "") || (formData.priceType === "PER_KM" && formData.basePrice !== "" && formData.baseKM !== "" && formData.pricePerKM !== "") || (formData.priceType === "ZONING" && Object.values(zonePrices).some((value) => value !== "" && value !== null)));
 
   return <Modal show={show} onHide={onHide} size="lg" centered>
     <Modal.Header closeButton><Modal.Title>Configure Pricing</Modal.Title></Modal.Header>
     <Modal.Body>
       <p className="text-muted mb-4">Vendor pricing overrides walk-in pricing for the same package size and delivery type.</p>
       <Form onSubmit={onSubmit}>
+        <Form.Group className="mb-3"><Form.Label>Rate Type</Form.Label><Form.Select name="rateType" value={formData.rateType || "ORDER"} onChange={onInputChange}><option value="ORDER">Order</option><option value="RETURN">Return</option></Form.Select></Form.Group>
         <Row>
           <Col md={6}><Form.Group className="mb-3"><Form.Label>Vendor</Form.Label><Select options={vendorOptions} value={vendorOptions.find((option) => option.value === (formData.vendorCode || "")) || vendorOptions[0]} onChange={(option) => updateField("vendorCode", option?.value || "")} /></Form.Group></Col>
           <Col md={6}><Form.Group className="mb-3"><Form.Label>Package Size *</Form.Label><Select options={sizeOptions} value={sizeOptions.find((option) => option.value === formData.shipmentRateSize) || null} onChange={(option) => updateField("shipmentRateSize", option?.value || "")} /></Form.Group></Col>
         </Row>
         <Row>
-          <Col md={6}><Form.Group className="mb-3"><Form.Label>Delivery Type *</Form.Label><Select options={deliveryOptions} value={deliveryOptions.find((option) => option.value === formData.deliveryTypeCode) || null} onChange={(option) => updateField("deliveryTypeCode", option?.value || "")} /></Form.Group></Col>
+          {formData.rateType !== "RETURN" && <Col md={6}><Form.Group className="mb-3"><Form.Label>Delivery Type *</Form.Label><Select options={deliveryOptions} value={deliveryOptions.find((option) => option.value === formData.deliveryTypeCode) || null} onChange={(option) => updateField("deliveryTypeCode", option?.value || "")} /></Form.Group></Col>}
           <Col md={6}><Form.Group className="mb-3"><Form.Label>Pricing Type *</Form.Label><Select options={priceTypes} value={priceTypes.find((option) => option.value === formData.priceType)} onChange={(option) => updateField("priceType", option?.value || "FIXED")} /></Form.Group></Col>
         </Row>
         {formData.priceType === "FIXED" && <Form.Group className="mb-3"><Form.Label>Fixed Amount (KES) *</Form.Label><Form.Control type="number" min="0" step="0.01" name="rateAmount" value={formData.rateAmount} onChange={onInputChange} placeholder="Amount applied to every matching package" /></Form.Group>}
@@ -52,11 +53,25 @@ const AddRoutePricingModal = ({ show, onHide, formData, onInputChange, onSubmit,
           <thead><tr><th>Price zone band</th><th>Sorting areas</th><th style={{ width: 210 }}>Price (KES)</th></tr></thead>
           <tbody>{zones.map((zone) => <tr key={zone.id}><td className="fw-semibold">{zone.name}</td><td className="small text-muted">{zone.dcCodes.join(", ") || "No sorting areas assigned"}</td><td><Form.Control type="number" min="0" step="0.01" value={zonePrices[zone.id] ?? ""} onChange={(event) => updateField("zonePrices", { ...zonePrices, [zone.id]: event.target.value })} placeholder="0.00" /></td></tr>)}</tbody>
         </Table>{!zones.length && <div className="p-3 text-muted">Create price zones before configuring zone-band pricing.</div>}</div>}
-        <Form.Check type="checkbox" id="includeShippingFeeInCOD" checked={Boolean(formData.includeShippingFeeInCOD)} onChange={(event) => updateField("includeShippingFeeInCOD", event.target.checked)} label="Include shipping fee in COD" />
-        <Form.Text className="text-muted">When COD is enabled, the customer pays the item value plus this delivery fee.</Form.Text>
+        <Row>
+          <Col md={6}>
+            <Form.Group className="mb-3" controlId="shipmentRateEffectiveFrom">
+              <Form.Label>Effective from *</Form.Label>
+              <Form.Control type="date" name="effectiveFrom" required value={formData.effectiveFrom || ""} max={formData.effectiveTo || undefined} onChange={onInputChange} />
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group className="mb-3" controlId="shipmentRateEffectiveTo">
+              <Form.Label>Effective to *</Form.Label>
+              <Form.Control type="date" name="effectiveTo" required value={formData.effectiveTo || ""} min={formData.effectiveFrom || undefined} onChange={onInputChange} />
+            </Form.Group>
+          </Col>
+        </Row>
+        {formData.rateType !== "RETURN" && <><Form.Check type="checkbox" id="includeShippingFeeInCOD" checked={Boolean(formData.includeShippingFeeInCOD)} onChange={(event) => updateField("includeShippingFeeInCOD", event.target.checked)} label="Include shipping fee in COD" />
+        <Form.Text className="text-muted">When COD is enabled, the customer pays the item value plus this delivery fee.</Form.Text></>}
       </Form>
     </Modal.Body>
-    <Modal.Footer><Button variant="outline-secondary" onClick={onHide}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={loading || !canSubmit}>{loading ? "Saving..." : "Save Pricing"}</Button></Modal.Footer>
+    <Modal.Footer><Button variant="outline-secondary" onClick={onHide}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={loading || !canSubmit || !formData.effectiveFrom || !formData.effectiveTo || formData.effectiveTo < formData.effectiveFrom}>{loading ? "Saving..." : "Save Pricing"}</Button></Modal.Footer>
   </Modal>;
 };
 

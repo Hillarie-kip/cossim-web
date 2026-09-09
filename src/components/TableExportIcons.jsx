@@ -53,6 +53,7 @@ const TableExportIcons = ({
   columns,
   pdfColumns,
   excelColumns,
+  nestedTable,
   filename = 'export',
   title = 'Export',
   fetchAllData = null,
@@ -79,6 +80,7 @@ const TableExportIcons = ({
       const result = await exportToPDF({
         data,
         columns: pdfColumns || columns,
+        nestedTable,
         filename,
         title,
         orientation: pdfOrientation,
@@ -115,6 +117,7 @@ const TableExportIcons = ({
       const result = await exportToExcel({
         data,
         columns: excelColumns || columns,
+        nestedTable,
         filename,
         sheetName: title,
         fetchAllData,
