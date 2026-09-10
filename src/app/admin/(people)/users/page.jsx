@@ -122,20 +122,30 @@ const UsersList = () => {
 
   // Handle edit user submission (handleUpdateUserInfo already toasts success/error and refreshes the list)
   const handleEditUserSubmit = async (userInfoData) => {
-    const { distributionCenterCodes = [], ...profileData } = userInfoData;
+    const { distributionCenterCodes = [], userCode, firstName, lastName, phoneNumber, email, userImageID } = userInfoData;
     const selectedCodes = new Set(distributionCenterCodes);
     const existingAssignments = Array.isArray(selectedUser?.AssignedDistributionCenter)
       ? selectedUser.AssignedDistributionCenter
       : [];
     const existingCodes = new Set(existingAssignments.map((dc) => dc.DCCode || dc.dcCode).filter(Boolean));
+    
+    // Transform to backend format with PascalCase
     const assignedDistributionCenters = [
-      ...distributionCenterCodes.map((dcCode) => ({ dcCode, statusID: 1 })),
+      ...distributionCenterCodes.map((dcCode) => ({ DCCode: dcCode, StatusID: 1 })),
       ...[...existingCodes]
         .filter((dcCode) => !selectedCodes.has(dcCode))
-        .map((dcCode) => ({ dcCode, statusID: 0 })),
+        .map((dcCode) => ({ DCCode: dcCode, StatusID: 0 })),
     ];
 
-    await handleUpdateUserInfo({ ...profileData, assignedDistributionCenters });
+    await handleUpdateUserInfo({ 
+      UserCode: userCode, 
+      FirstName: firstName, 
+      LastName: lastName, 
+      PhoneNumber: phoneNumber, 
+      Email: email, 
+      UserImageID: userImageID,
+      AssignedDistributionCenters: assignedDistributionCenters 
+    });
     await fetchUsers({ pageNo: currentPage, pageSize, searchTerm, roleTypeCode: selectedRoleTypeCode });
     setShowEditModal(false);
   };

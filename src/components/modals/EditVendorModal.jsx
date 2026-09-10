@@ -40,11 +40,19 @@ const EditVendorModal = ({ show, onClose, onSubmit, vendor }) => {
     }
   }, [vendor, show]);
 
-  // Prepare options for the select dropdown
-  const dcOptions = distributionCenters.filter(dc => dc.IsPrimary).map(dc => ({
-    value: dc.DCCode,
-    label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`
-  }));
+  // Prepare options for the select dropdown - include all DCs, primary ones first
+  const dcOptions = (Array.isArray(distributionCenters) ? distributionCenters : [])
+    .sort((a, b) => {
+      // Sort so primary DCs come first
+      if (a.IsPrimary && !b.IsPrimary) return -1;
+      if (!a.IsPrimary && b.IsPrimary) return 1;
+      return 0;
+    })
+    .map(dc => ({
+      value: dc.DCCode,
+      label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`,
+      isDisabled: dc.StatusID !== 1
+    }));
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -62,7 +70,19 @@ const EditVendorModal = ({ show, onClose, onSubmit, vendor }) => {
     setSubmitting(true);
 
     try {
-      await onSubmit(form);
+      // Transform camelCase to PascalCase for backend
+      // Ensure isServiceFeeMandatory is sent as integer (0 or 1)
+      const payload = {
+        VendorCode: form.vendorCode,
+        VendorName: form.vendorName,
+        ContactName: form.contactName,
+        PhoneNumber: form.phoneNumber,
+        EmailAddress: form.emailAddress,
+        DefaultDCCode: form.defaultDCCode,
+        isServiceFeeMandatory: parseInt(form.isServiceFeeMandatory, 10) || 0,
+      };
+      console.log('Vendor update payload:', payload);
+      await onSubmit(payload);
       setSubmitting(false);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -148,7 +168,7 @@ const EditVendorModal = ({ show, onClose, onSubmit, vendor }) => {
                     value={dcOptions.find(option => option.value === form.defaultDCCode) || null}
                     onChange={handleSelectChange}
                     options={dcOptions}
-                    placeholder="Select Distribution Center..."
+                    placeholder={dcLoading ? "Loading distribution centers..." : "Select Distribution Center..."}
                     isLoading={dcLoading}
                     isSearchable={true}
                     isClearable={true}

@@ -30,11 +30,19 @@ const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
     }
   }, [show, fetchDistributionCenters]);
 
-  // Prepare options for the select dropdown
-  const dcOptions = useMemo(() => distributionCenters.filter(dc => dc.IsPrimary).map(dc => ({
-    value: dc.DCCode,
-    label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})`
-  })), [distributionCenters]);
+  // Prepare options for the select dropdown - include all DCs, primary ones first
+  const dcOptions = useMemo(() => (Array.isArray(distributionCenters) ? distributionCenters : [])
+    .sort((a, b) => {
+      // Sort so primary DCs come first, then by active status
+      if (a.IsPrimary && !b.IsPrimary) return -1;
+      if (!a.IsPrimary && b.IsPrimary) return 1;
+      return 0;
+    })
+    .map(dc => ({
+      value: dc.DCCode,
+      label: `${dc.DCCode} - ${dc.DCName} (${dc.CityName})${!dc.IsPrimary ? ' (Secondary)' : ''}`,
+      isDisabled: dc.StatusID !== 1
+    })), [distributionCenters]);
 
   useEffect(() => {
     if (!show || form.defaultDCCode) return;
@@ -64,7 +72,17 @@ const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
     setSubmitting(true);
     
     try {
-      const result = await onSubmit(form);
+      // Transform camelCase to PascalCase for backend
+      const payload = {
+        VendorName: form.vendorName,
+        ContactName: form.contactName,
+        PhoneNumber: form.phoneNumber,
+        EmailAddress: form.emailAddress,
+        DefaultDCCode: form.defaultDCCode,
+        isServiceFeeMandatory: 0, // Default to 0 for new vendors (must be integer)
+      };
+      console.log('Create vendor payload:', payload);
+      const result = await onSubmit(payload);
 
       // if error occurs with submission, do not reset form
       if (result?.Error) return;
@@ -184,7 +202,7 @@ const AddVendorModal = ({ show, onClose, onSubmit, referralCode = "" }) => {
                     value={dcOptions.find(option => option.value === form.defaultDCCode) || null}
                     onChange={handleSelectChange}
                     options={dcOptions}
-                    placeholder="Select Distribution Center..."
+                    placeholder={dcLoading ? "Loading distribution centers..." : "Select Distribution Center..."}
                     isLoading={dcLoading}
                     isSearchable={true}
                     isClearable={true}

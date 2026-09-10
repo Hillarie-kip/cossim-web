@@ -95,7 +95,20 @@ const VendorDetailPage = () => {
 
   const handleUpdateVendor = async () => {
     try {
-      const response = await vendorService.updateVendor(editForm);
+      // Transform camelCase to PascalCase for backend
+      // Ensure isServiceFeeMandatory is sent as integer (0 or 1)
+      const payload = {
+        VendorCode: editForm.vendorCode,
+        VendorName: editForm.vendorName,
+        ContactName: editForm.contactName,
+        PhoneNumber: editForm.phoneNumber,
+        EmailAddress: editForm.emailAddress,
+        DefaultDCCode: editForm.defaultDCCode,
+        isServiceFeeMandatory: parseInt(editForm.isServiceFeeMandatory, 10) || 0,
+      };
+      console.log('Vendor update payload:', payload);
+      
+      const response = await vendorService.updateVendor(payload);
 
       if (response && !response.Error) {
         setVendorData({ ...vendorData, ...editForm });

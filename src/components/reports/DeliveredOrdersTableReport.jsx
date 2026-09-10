@@ -51,6 +51,7 @@ export default function DeliveredOrdersTableReport({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [returnStatusFilter, setReturnStatusFilter] = useState("pending");
+  const [dateFilterType, setDateFilterType] = useState("orderDate"); // "orderDate" or "paymentDate"
   const [pagination, setPagination] = useState({ current: 1, pageSize: 1000, total: 0 });
   const { filters: navigationFilters } = useGlobalFilters();
   const { user } = useAuth();
@@ -112,6 +113,7 @@ export default function DeliveredOrdersTableReport({
             : { fromDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined }),
           startDate: navigationFilters.startDate || undefined,
           endDate: navigationFilters.endDate || undefined,
+          dateFilterType: taskType === "completed" ? dateFilterType : undefined,
           orderBy: "DateAdded",
           sortDir: "DESC",
           forceRefresh,
@@ -130,7 +132,27 @@ export default function DeliveredOrdersTableReport({
     }
   };
 
-  useEffect(() => { loadReport({ page: 1, pageSize: 1000 }); }, [navigationFilters.startDate, navigationFilters.endDate, navigationFilters.vendorCode, navigationFilters.dcCode, navigationFilters.dcCodes, returnStatusFilter]);
+  useEffect(() => { loadReport({ page: 1, pageSize: 1000 }); }, [navigationFilters.startDate, navigationFilters.endDate, navigationFilters.vendorCode, navigationFilters.dcCode, navigationFilters.dcCodes, returnStatusFilter, dateFilterType]);
+
+  const reverseDelivery = async (order) => {
+    if (!(isAdmin || isDCUser)) return notify.error("You are not allowed to reverse delivery.");
+    const confirmation = await Swal.fire({
+      title: "Reverse delivery?",
+      text: `Reverse delivery for order ${order.OrderNO}? This will mark it as in-transit again.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, reverse",
+      confirmButtonColor: "#dc3545",
+      cancelButtonText: "Cancel",
+    });
+    if (!confirmation.isConfirmed) return;
+    try {
+      const response = await updateShipmentStatusBatch({ orders: [{ orderNO: order.OrderNO, statusID: 302, dcCode: order.CurrentDCCode || order.OriginDCCode || "", notes: "Delivery reversed due to mistaken delivery" }] });
+      if (response?.Error) throw new Error(response.Message || "Failed to reverse delivery");
+      notify.success("Delivery reversed successfully");
+      await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm });
+    } catch (error) { notify.error(error.message || "Failed to reverse delivery"); }
+  };
 
   const resolveReturn = async (order, action) => {
     if (action === "decline" && !(isAdmin || isDCUser)) return notify.error("You are not allowed to decline returns.");
@@ -184,8 +206,9 @@ export default function DeliveredOrdersTableReport({
     { title: "Service fee", dataIndex: "ServiceFee", width: 105, align: "right", render: (value) => `KES ${money(value)}` },
     { title: "COD / Paid / Balance", dataIndex: "CODAmount", width: 250, align: "right", render: (_, row) => <div><span className="d-block">COD: <strong>KES {money(row.CODAmount)}</strong></span><small className="d-block text-success">Paid: KES {money(row.PaidAmount)}</small><small className="d-block text-danger">Balance: KES {money(Math.max(0, Number(row.CODAmount || 0) - Number(row.PaidAmount || 0)))}</small><small className="d-block text-muted text-break">Ref: {text(row.PaymentTransactionRefs)}</small></div> },
     { title: "Date / Status", dataIndex: "DateAdded", width: 180, render: (value, row) => { const formatted = reportDateParts(value); const paymentDate = reportDateParts(row.PaymentDate); return <div><span className="d-block">{formatted.date}</span>{formatted.time && <small className="d-block">{formatted.time}</small>}<small className="d-block text-muted text-wrap">{text(row.StatusName || row.TaskManagementStatus)}</small>{row.PaymentDate && <small className="d-block text-success mt-1">Paid: {paymentDate.date}{paymentDate.time ? ` ${paymentDate.time}` : ""}</small>}</div>; } },
+    ...(taskType === "delivered" ? [{ title: "Actions", dataIndex: "DeliveredActions", width: 150, fixed: "right", render: (_, row) => (isAdmin || isDCUser) ? <button className="btn btn-outline-warning btn-sm" title="Reverse delivery" onClick={() => reverseDelivery(row)}>Undo Delivery</button> : "-" }] : []),
     ...(returnActions ? [{ title: "Actions", dataIndex: "ReturnActions", width: 180, fixed: "right", render: (_, row) => Number(row.StatusID) === 402 ? <div className="d-flex gap-1"><button className="btn btn-success btn-sm" onClick={() => resolveReturn(row, "accept")}>Accept</button>{(isAdmin || isDCUser) && <button className="btn btn-outline-danger btn-sm" onClick={() => resolveReturn(row, "decline")}>Decline</button>}</div> : <span className="text-muted">Resolved</span> }] : []),
-  ], [allowPayment, isConsolidated]);
+  ], [allowPayment, isConsolidated, taskType]);
 
   const orderExportColumns = useMemo(() => [
     { title: "Order number", dataIndex: "OrderNO" },
@@ -194,6 +217,14 @@ export default function DeliveredOrdersTableReport({
     { title: "Receiver", dataIndex: "ReceiverContactName" },
     { title: "Receiver phone", dataIndex: "ReceiverContactPhone" },
     { title: "Customer street", dataIndex: "ReceiverStreetName" },
+    { title: "Product", dataIndex: "ShipmentOrderItems", render: (items) => {
+      if (!Array.isArray(items) || items.length === 0) return "-";
+      const productNames = items
+        .map(item => item.productName || item.ProductName || "")
+        .filter(name => name.trim())
+        .join(", ");
+      return productNames || "-";
+    }},
     { title: "Origin", dataIndex: "OriginDCName" },
     { title: "Origin code", dataIndex: "OriginDCCode" },
     { title: "Destination", dataIndex: "DestinationDCName" },
@@ -305,7 +336,6 @@ export default function DeliveredOrdersTableReport({
             columns={exportColumns}
             pdfColumns={pdfColumns}
             excelColumns={exportColumns}
-            nestedTable={taskType === "completed" ? productExportTable : undefined}
             filename={title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "report"}
             title={title}
             fetchAllData={fetchAllDataForExport}
@@ -322,9 +352,10 @@ export default function DeliveredOrdersTableReport({
     <div className="card table-list-card">
       <div className="card-body">
         <div className="row g-2 align-items-end mb-3">
-          <div className={returnActions ? "col-lg-7" : "col-lg-9"}><label className="form-label">Search</label><input className="form-control" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") loadReport({ page: 1, search: event.currentTarget.value }); }} placeholder={isConsolidated ? "Handover code, shipment no., source DC, or destination DC" : "Order number, vendor, customer, or DC"} /></div>
+          <div className={returnActions ? "col-lg-7" : taskType === "completed" ? "col-lg-6" : "col-lg-9"}><label className="form-label">Search</label><input className="form-control" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") loadReport({ page: 1, search: event.currentTarget.value }); }} placeholder={isConsolidated ? "Handover code, shipment no., source DC, or destination DC" : "Order number, vendor, customer, or DC"} /></div>
+          {taskType === "completed" && <div className="col-lg-2"><label className="form-label">Filter by</label><div className="btn-group w-100" role="group"><button type="button" className={`btn btn-sm ${dateFilterType === "orderDate" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setDateFilterType("orderDate")}>Order Date</button><button type="button" className={`btn btn-sm ${dateFilterType === "paymentDate" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setDateFilterType("paymentDate")}>Payment Date</button></div></div>}
           {returnActions && <div className="col-lg-2"><label className="form-label">Status</label><select className="form-select" value={returnStatusFilter} onChange={(event) => setReturnStatusFilter(event.target.value)}><option value="pending">Pending</option><option value="all">All</option><option value="accepted">Accepted</option><option value="declined">Declined</option></select></div>}
-          <div className="col-lg-3 d-flex gap-2"><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
+          <div className={returnActions ? "col-lg-2" : taskType === "completed" ? "col-lg-4" : "col-lg-3"} style={{ display: "flex", gap: "0.5rem" }}><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
         </div>
         <Datatable
           className="table"

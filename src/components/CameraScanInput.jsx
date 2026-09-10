@@ -37,7 +37,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
     const reader = new BrowserMultiFormatReader();
     readerRef.current = reader;
     reader.decodeFromConstraints(
-      { audio: false, video: { facingMode: { ideal: "environment" } } },
+      { audio: false, video: true },
       videoRef.current,
       (result) => {
         if (!result || handledRef.current || cancelled) return;
@@ -81,17 +81,21 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
       return;
     }
     try {
+      console.log("Requesting camera permission...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: "environment" } },
+        video: true,
       });
+      console.log("Camera permission granted, stream:", stream);
       stream.getTracks().forEach((track) => track.stop());
       setOpen(true);
     } catch (cameraError) {
+      console.error("Camera error:", cameraError?.name, cameraError?.message);
       setEnabled(false);
-      setPermissionError(cameraError?.name === "NotAllowedError"
-        ? "Camera permission was denied. Allow camera access in your browser settings and try again."
-        : "Camera access could not be started on this device.");
+      const errorMsg = cameraError?.name === "NotAllowedError"
+        ? `Camera permission was denied. Error: ${cameraError?.message}. Please check browser settings and allow camera access.`
+        : `Camera error: ${cameraError?.message || "Camera access could not be started on this device."}`;
+      setPermissionError(errorMsg);
     }
   }, [closeCamera]);
 
