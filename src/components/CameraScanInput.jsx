@@ -37,7 +37,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
     const reader = new BrowserMultiFormatReader();
     readerRef.current = reader;
     reader.decodeFromConstraints(
-      { audio: false, video: true },
+      { audio: false, video: { facingMode: { ideal: "environment" } } },
       videoRef.current,
       (result) => {
         if (!result || handledRef.current || cancelled) return;
@@ -84,7 +84,7 @@ const CameraScanInput = ({ children, onScan, label = "Scan with camera" }) => {
       console.log("Requesting camera permission...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: true,
+        video: { facingMode: { ideal: "environment" } },
       });
       console.log("Camera permission granted, stream:", stream);
       stream.getTracks().forEach((track) => track.stop());

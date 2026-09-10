@@ -28,6 +28,7 @@ import {
   UpdateSettlementModal,
 } from "@/components/modals";
 import notify from "@/lib/toast";
+import SettlementAmounts, { settlementTotals, settlementMoney } from "@/components/finance/SettlementAmounts";
 import { getSettlementProofUrl } from "@/services/financeService";
 
 const SettlementDetailPage = () => {
@@ -40,6 +41,7 @@ const SettlementDetailPage = () => {
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [removingItem, setRemovingItem] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   // Use hooks
   const {
@@ -61,7 +63,7 @@ const SettlementDetailPage = () => {
     if (settlementNO) {
       fetchSettlementDetail(settlementNO);
     }
-  }, [settlementNO]);
+  }, [settlementNO, fetchSettlementDetail]);
 
   // Handle update settlement
   const handleUpdateSettlementClick = async (updateData) => {
@@ -252,7 +254,7 @@ const SettlementDetailPage = () => {
       <div className="content">
         <Alert variant="warning">
           <Alert.Heading>Settlement Not Found</Alert.Heading>
-          <p>The settlement you're looking for could not be found.</p>
+          <p>The requested settlement could not be found.</p>
           <Link href={route.settlements}>
             <Button variant="outline-primary">Back to Settlements</Button>
           </Link>
@@ -262,7 +264,26 @@ const SettlementDetailPage = () => {
   }
 
   const settlementData = settlementDetail;
-  const items = settlementData?.itemsArray || [];
+  const items = (settlementData?.itemsArray || []).filter((item) => Number(item.statusID) !== 0);
+  const totals = settlementTotals(items, true);
+  const exportPdf = async (share = false) => {
+    setPdfBusy(true);
+    try {
+      const { buildSettlementPdf } = await import("@/utils/settlementPdf");
+      const doc = buildSettlementPdf(settlementData, getVendorName(settlementData.vendorCode));
+      const filename = "COSSIM-Remittance-" + String(settlementData.settlementNO).replace(/[^a-zA-Z0-9_-]/g, "-") + ".pdf";
+      if (share) {
+        const file = new File([doc.output("blob")], filename, { type: "application/pdf" });
+        if (navigator.canShare?.({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: "COSSIM remittance statement" }); return; }
+          catch (error) { if (error.name === "AbortError") return; }
+        }
+        notify.success("Downloading the statement so you can attach it to your message.");
+      }
+      doc.save(filename);
+    } catch (error) { notify.error("Could not create the remittance PDF. Please try again."); }
+    finally { setPdfBusy(false); }
+  };
 
   return (
     <React.Fragment>
@@ -304,8 +325,10 @@ const SettlementDetailPage = () => {
               </OverlayTrigger>
             </li>
           </ul>
-          <div className="page-btn">
-            {settlementData?.statusID !== 4 && (
+          <div className="page-btn d-flex flex-wrap gap-2">
+            <Button variant="outline-primary" disabled={pdfBusy} onClick={() => exportPdf()}><FileText size={16} className="me-2" />{pdfBusy ? "Preparing…" : "Download statement PDF"}</Button>
+            <Button variant="outline-secondary" disabled={pdfBusy} onClick={() => exportPdf(true)}>Share PDF</Button>
+            {Number(settlementData?.statusID) !== 4 && (
               <>
                 <Button
                   variant="success"
@@ -377,8 +400,8 @@ const SettlementDetailPage = () => {
             <Card className="text-center">
               <Card.Body>
                 <DollarSign size={24} className="text-success mb-2" />
-                <h6 className="card-title">Total Amount</h6>
-                <h4 className="text-success">{formatCurrency(settlementData?.totalAmount)}</h4><small className="d-block">Transfer fee: {formatCurrency(settlementData?.transferFee)}</small><small className="d-block">Before transfer fee: {formatCurrency(Number(settlementData?.totalAmount || 0) + Number(settlementData?.transferFee || 0))}</small>
+                <h6 className="card-title">Net amount remitted</h6>
+                <h4 className="text-success">{formatCurrency(settlementData?.totalAmount)}</h4><small className="d-block">Transaction cost: {formatCurrency(settlementData?.transferFee)}</small><small className="d-block">Before transaction cost: {formatCurrency(Number(settlementData?.totalAmount || 0) + Number(settlementData?.transferFee || 0))}</small>
               </Card.Body>
             </Card>
           </Col>
@@ -393,6 +416,8 @@ const SettlementDetailPage = () => {
           </Col>
         </Row>
 
+        <SettlementAmounts totals={totals} transactionCost={Number(settlementData.transferFee || 0)} netAmount={Number(settlementData.totalAmount || 0)} />
+        {totals.serviceFee == null && <Alert variant="light">This older settlement has no saved fee breakdown. Its recorded remittance remains unchanged.</Alert>}
         {/* Settlement Details */}
         <Row className="mb-4">
           <Col md={12}>
@@ -458,7 +483,11 @@ const SettlementDetailPage = () => {
                       <thead>
                         <tr>
                           <th>Order NO</th>
-                          <th>COD Amount</th>
+                          <th className="text-end">Order amount</th>
+                          <th className="text-end">Paid amount</th>
+                          <th className="text-end">Service fee</th>
+                          <th className="text-end">Return fee</th>
+                          <th className="text-end">Net before transaction cost</th>
                           <th>Date Added</th>
                           <th>Actions</th>
                         </tr>
@@ -471,7 +500,8 @@ const SettlementDetailPage = () => {
                                 {item.orderNO}
                               </span>
                             </td>
-                            <td className="text-end">
+                            {["orderAmount", "paidAmount", "serviceFee", "returnCost"].map((key) => <td className="text-end" key={key}>{settlementMoney(item[key])}</td>)}
+                            <td className="text-end fw-bold">
                               {formatCurrency(item.codAmount)}
                             </td>
                             <td>{formatDate(item.dateAdded)}</td>
@@ -480,7 +510,7 @@ const SettlementDetailPage = () => {
                                 variant="outline-danger"
                                 size="sm"
                                 onClick={() => handleRemoveItem(item.codSettlementItemID, item.orderNO)}
-                                disabled={removingItem === item.codSettlementItemID || settlementData?.statusID === 4}
+                                disabled={removingItem === item.codSettlementItemID || Number(settlementData?.statusID) === 4}
                               >
                                 <Trash2 size={14} className="me-1" />
                                 {removingItem === item.codSettlementItemID ? "Removing..." : "Remove"}
@@ -491,21 +521,24 @@ const SettlementDetailPage = () => {
                       </tbody>
                       <tfoot>
                         <tr className="table-dark">
-                          <td colSpan="1" className="text-end fw-bold">Total:</td>
+                          <td className="text-end fw-bold">Totals:</td>
+                          {["orderAmount", "paidAmount", "serviceFee", "returnCost"].map((key) => <td className="text-end fw-bold" key={key}>{settlementMoney(totals[key])}</td>)}
                           <td className="text-end fw-bold">
                             {formatCurrency(
-                              items.reduce((sum, item) => sum + (item.codAmount || 0), 0)
+                              items.reduce((sum, item) => sum + Number(item.codAmount || 0), 0)
                             )}
                           </td>
                           <td colSpan="2"></td>
                         </tr>
+                        <tr><td colSpan="5" className="text-end">Transaction cost</td><td className="text-end">-{formatCurrency(settlementData.transferFee)}</td><td colSpan="2" /></tr>
+                        <tr className="table-success"><td colSpan="5" className="text-end fw-bold">Net amount remitted</td><td className="text-end fw-bold">{formatCurrency(settlementData.totalAmount)}</td><td colSpan="2" /></tr>
                       </tfoot>
                     </Table>
                   </div>
                 ) : (
                   <Alert variant="info">
                     <Alert.Heading>No Items Found</Alert.Heading>
-                    <p>This settlement has no items yet. Click "Add Item" to add orders to this settlement.</p>
+                    <p>This settlement has no items yet. Click Add Item to add orders to this settlement.</p>
                   </Alert>
                 )}
               </Card.Body>
