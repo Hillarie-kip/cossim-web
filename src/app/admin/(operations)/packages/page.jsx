@@ -47,6 +47,10 @@ import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
+const isReceivedHandoverItem = (item) =>
+  [201, 402, 703].includes(Number(item.OrderStatusID ?? item.StatusID))
+  || /RECEIVED|RETURNED TO VENDOR/i.test(item.StatusName || "");
+
 const getStatusName = (status) =>
   status?.statusName ||
   status?.StatusName ||
@@ -481,8 +485,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [completedReceiveKeys, setCompletedReceiveKeys] = useState([]);
   const [lostOrderKeys, setLostOrderKeys] = useState([]);
   const [receiveItemsTab, setReceiveItemsTab] = useState("pending");
-  const receivedItems = receiveItems.filter((item) => completedReceiveKeys.includes(item.OrderNO) || Number(item.OrderStatusID) === 201);
-  const pendingReceiveItems = receiveItems.filter((item) => !completedReceiveKeys.includes(item.OrderNO) && Number(item.OrderStatusID) !== 201 && !lostOrderKeys.includes(item.OrderNO));
+  const receivedItems = receiveItems.filter((item) => completedReceiveKeys.includes(item.OrderNO) || isReceivedHandoverItem(item));
+  const pendingReceiveItems = receiveItems.filter((item) => !completedReceiveKeys.includes(item.OrderNO) && !isReceivedHandoverItem(item) && !lostOrderKeys.includes(item.OrderNO));
   const visibleReceiveItems = receiveItemsTab === "received" ? receivedItems : pendingReceiveItems;
 
   useEffect(() => {
@@ -674,7 +678,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           // normal Orders to Receive queue. RETURN batches stay isolated in
           // Reversals to Receive.
           const isReverse = batchType === "RETURN";
-          const receivedItems = items.filter((item) => [201, 402, 703].includes(Number(item.OrderStatusID)) || /RECEIVED|RETURNED TO VENDOR/i.test(`${item.StatusName || ""}`)).length;
+          const receivedItems = items.filter(isReceivedHandoverItem).length;
           return { ...batch, BatchType: batchType, _IsReverse: isReverse, _ReceivedItems: receivedItems, _LoadedItems: items.length };
         } catch {
           return { ...batch, _IsReverse: false, _ReceivedItems: 0 };
@@ -2084,6 +2088,21 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
   };
 
+  useEffect(() => {
+    if (receiveItemsLoading || !receiveItems.length) return;
+    const progress = new Map();
+    receiveItems.forEach((item) => {
+      if (!item.HandoverCode) return;
+      const count = progress.get(item.HandoverCode) || 0;
+      progress.set(item.HandoverCode, count + Number(
+        isReceivedHandoverItem(item) || completedReceiveKeys.includes(item.OrderNO)
+      ));
+    });
+    setAllInboundBatches((current) => current.map((batch) => progress.has(batch.HandoverCode)
+      ? { ...batch, _ReceivedItems: progress.get(batch.HandoverCode) }
+      : batch));
+  }, [receiveItems, receiveItemsLoading, completedReceiveKeys]);
+
   const openReceivePanel = async (batch) => {
     setReceiveBatch(batch);
     setReceiveItems([]);
@@ -2156,7 +2175,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const responseData = response?.Data ?? response?.data ?? response;
         const order = Array.isArray(responseData) ? responseData[0] : responseData;
         if (!order?.OrderNO) return notify.error("Package not found");
-        if (Number(order.StatusID) === 201) return notify.error(`${order.OrderNO} has already been received`);
+        if (isReceivedHandoverItem(order)) return notify.error(`${order.OrderNO} has already been received`);
         const handoverCode = order.HandoverCode || order.LatestHandoverCode;
         const matchingBatch = handoverCode ? inboundBatches.find((item) => item.HandoverCode === handoverCode) : null;
         if (matchingBatch) {
@@ -2175,7 +2194,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
     const match = receiveItems.find((item) => String(item.OrderNO).toUpperCase() === code.toUpperCase());
     if (!match) return notify.error("Package number is not in this batch");
-    if (Number(match.OrderStatusID) === 201) return notify.error(`${match.OrderNO} has already been received`);
+    if (isReceivedHandoverItem(match) || completedReceiveKeys.includes(match.OrderNO)) return notify.error(`${match.OrderNO} has already been received`);
     setReceivedOrderKeys((current) => current.includes(match.OrderNO) ? current : [...current, match.OrderNO]);
   };
 
@@ -2218,7 +2237,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const selectedReceiveKeys = new Set(payload.Orders.map((order) => order.OrderNO));
     const isBatchFullyResolved = (batchItems) => batchItems.every((item) =>
       selectedReceiveKeys.has(item.OrderNO)
-      || [201, 402, 703].includes(Number(item.OrderStatusID))
+      || isReceivedHandoverItem(item)
       || completedReceiveKeys.includes(item.OrderNO)
       || lostOrderKeys.includes(item.OrderNO)
     );
@@ -3214,7 +3233,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       <div className="list-group mb-3">
                         {!visibleReceiveItems.length && <p className="text-muted text-center py-3 mb-0">{receiveItemsTab === "received" ? "No packages received yet." : "No pending packages."}</p>}
                         {visibleReceiveItems.map((item) => {
-                          const isReceived = completedReceiveKeys.includes(item.OrderNO) || Number(item.OrderStatusID) === 201;
+                          const isReceived = completedReceiveKeys.includes(item.OrderNO) || isReceivedHandoverItem(item);
                           const isLost = lostOrderKeys.includes(item.OrderNO);
                           const isResolved = isReceived || isLost;
                           return <label className={`list-group-item d-flex align-items-center justify-content-between gap-2 ${isResolved ? "bg-light" : ""}`} key={`${item.HandoverCode || "blind"}-${item.OrderNO}`}>
@@ -3230,7 +3249,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                       </div>
                     )}
                     <div className="d-flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-outline-success" disabled={!receiveItems.some((item) => Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO))} onClick={() => setReceivedOrderKeys(receiveItems.filter((item) => Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO)).map((item) => item.OrderNO))}>Confirm All Manually</button>
+                      <button type="button" className="btn btn-outline-success" disabled={!pendingReceiveItems.length} onClick={() => setReceivedOrderKeys(pendingReceiveItems.map((item) => item.OrderNO))}>Confirm All Manually</button>
                       <button type="button" className="btn btn-success" disabled={!receivedOrderKeys.length} onClick={() => setShowReceiveBatchModal(true)}>Receive selected ({receivedOrderKeys.length})</button>
                       <button type="button" className="btn btn-outline-danger" disabled={!receivedOrderKeys.length} onClick={handleMarkSelectedReceiveItemsLost}>Mark selected as lost ({receivedOrderKeys.length})</button>
                     </div>
@@ -3459,7 +3478,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         courierCode={receiveBatch?.CourierCode || receiveBatch?.RiderUserCode}
         batchCount={receiveBatch?.IsMultiBatch ? receiveBatch.Batches.length : undefined}
         isReverse={activeTask === "reverseReceive"}
-        orders={receiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO) && Number(item.OrderStatusID) !== 201 && !completedReceiveKeys.includes(item.OrderNO) && !lostOrderKeys.includes(item.OrderNO))}
+        orders={pendingReceiveItems.filter((item) => receivedOrderKeys.includes(item.OrderNO))}
       />
 
       <Modal show={showCreatePackage} onHide={() => setShowCreatePackage(false)} size="xl" fullscreen="lg-down" scrollable centered>

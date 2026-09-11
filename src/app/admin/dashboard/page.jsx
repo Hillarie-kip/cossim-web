@@ -71,10 +71,14 @@ export default function DashboardPage(){
     },0);
     return {...stage,OrderCount:count,PercentageOfOrders:total?count/total*100:0};
   }),[statusRows,total]);
+  const deliveredOrders=statusRows.reduce((sum,row)=>{
+    const statusID=Number(readAnalyticsValue(row,"StatusID",0));
+    return statusID===303||statusID===802?sum+Number(readAnalyticsValue(row,"OrderCount",0)):sum;
+  },0);
   const orderSummaryCards=[
     ["Received from vendor",number(readAnalyticsValue(summary,"TotalOrders",0)),"Selected period",Box],
     ["In transit",number(readAnalyticsValue(summary,"ActiveOrders",0)),"Currently in progress",Clock3],
-    ["Delivered",number(readAnalyticsValue(summary,"DeliveredOrders",0)),`${Number(readAnalyticsValue(summary,"DeliveryRatePercentage",0)).toFixed(1)}% delivery rate`,CheckCircle2],
+    ["Delivered",number(deliveredOrders),`${percentage(deliveredOrders,total).toFixed(1)}% delivery rate`,CheckCircle2],
     ["Failed / returned",number(readAnalyticsValue(summary,"FailedOrders",0)),`${Number(readAnalyticsValue(summary,"FailureRatePercentage",0)).toFixed(1)}% failure rate`,RotateCcw],
   ];
   const financialSummaryCards=[

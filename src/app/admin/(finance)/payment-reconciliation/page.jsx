@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Swal from "sweetalert2";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { importDeliveredOrderPayments } from "@/services/shipmentService";
 import { clearPaidToVendor, getReconciliationBatches, getReconciliationTransactions, getReconciliationWorkspace, matchOrderReceipts, rejectReconciliationOrder, searchPaybillReceipts } from "@/services/financeService";
@@ -43,7 +44,17 @@ function OrderReconciliation({ refreshKey }) {
     finally { setBusyOrder(""); }
   };
   const reject = async (orderNO) => {
-    if (!window.confirm(`Remove ${orderNO} from Finance reconciliation as non-compliant?`)) return;
+    const confirmation = await Swal.fire({
+      title: "Reject non-compliant order?",
+      text: `Remove ${orderNO} from Finance reconciliation as non-compliant?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#dc3545",
+      confirmButtonText: "Yes, reject order",
+      cancelButtonColor: "#6c757d",
+      cancelButtonText: "Cancel",
+    });
+    if (!confirmation.isConfirmed) return;
     setBusyOrder(orderNO);
     try { const response = await rejectReconciliationOrder(orderNO); notify.success(response.Message); setRows((old) => old.filter((row) => row.orderNO !== orderNO)); }
     catch (error) { notify.error(error.message); }
@@ -51,9 +62,21 @@ function OrderReconciliation({ refreshKey }) {
   };
   const toggleOrder = (orderNO, checked) => setSelectedOrders((old) => checked ? [...new Set([...old, orderNO])] : old.filter((value) => value !== orderNO));
   const clearDirectPayments = async () => {
-    if (!selectedOrders.length || !window.confirm(`Clear ${selectedOrders.length} selected order(s) as paid directly to the vendor? This marks them complete and removes them from statement reconciliation.`)) return;
+    if (!selectedOrders.length || clearing) return;
+    const orderNOs = [...selectedOrders];
+    const confirmation = await Swal.fire({
+      title: "Clear paid to vendor?",
+      text: `Clear ${orderNOs.length} selected order(s) as paid directly to the vendor? This marks them complete and removes them from statement reconciliation.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#28a745",
+      confirmButtonText: "Yes, clear orders",
+      cancelButtonColor: "#6c757d",
+      cancelButtonText: "Cancel",
+    });
+    if (!confirmation.isConfirmed) return;
     setClearing(true);
-    try { const response = await clearPaidToVendor(selectedOrders); notify.success(response.Message); await load(search); }
+    try { const response = await clearPaidToVendor(orderNOs); notify.success(response.Message); await load(search); }
     catch (error) { notify.error(error.message); }
     finally { setClearing(false); }
   };
