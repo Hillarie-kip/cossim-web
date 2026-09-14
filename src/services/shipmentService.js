@@ -106,6 +106,7 @@ export const getShipmentOrdersByVendor = async (params = {}) => {
         if (params.orderBy) queryParams.append('orderBy', params.orderBy);
         if (params.sortDir) queryParams.append('sortDir', params.sortDir);
         if (params.taskType) queryParams.append('taskType', params.taskType);
+        if (params.dateFilterType) queryParams.append('dateFilterType', params.dateFilterType);
 
         const url = `${apiRoutes.shipment.getOrdersByVendor}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await api.get(url, {

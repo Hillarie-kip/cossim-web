@@ -647,11 +647,14 @@ export const useShipment = (initialParams = {}) => {
       setError(null);
 
       const response = await updateShipmentStatusBatch({ orders });
-      if (response.Error) {
-        notify.error(response.Message || "Failed to update shipment status batch");
-      } else {
-        notify.success("Shipment status batch updated successfully");
+      const failedOrders = Array.isArray(response?.Data)
+        ? response.Data.filter((result) => result.Error)
+        : [];
+      if (!response || response.Error || Number(response.FailedCount) > 0 || failedOrders.length) {
+        const details = failedOrders.map((result) => `${result.OrderNO || "Order"}: ${result.Message || "Update failed"}`).join("; ");
+        throw new Error(details || response?.Message || "Failed to update shipment status batch");
       }
+      notify.success("Shipment status batch updated successfully");
 
       return response;
     } catch (error) {

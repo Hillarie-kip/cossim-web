@@ -51,7 +51,7 @@ export default function DeliveredOrdersTableReport({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [returnStatusFilter, setReturnStatusFilter] = useState("pending");
-  const [dateFilterType, setDateFilterType] = useState("orderDate"); // "orderDate" or "paymentDate"
+  const [dateFilterType, setDateFilterType] = useState(taskType === "completed" ? "paymentDate" : "orderDate"); // "orderDate" or "paymentDate"
   const [pagination, setPagination] = useState({ current: 1, pageSize: 1000, total: 0 });
   const { filters: navigationFilters } = useGlobalFilters();
   const { user } = useAuth();
@@ -237,7 +237,7 @@ export default function DeliveredOrdersTableReport({
     { title: "Paid amount", dataIndex: "PaidAmount" },
     { title: "Payment transaction refs", dataIndex: "PaymentTransactionRefs" },
     { title: "Payment Date", dataIndex: "PaymentDate", render: (value) => value ? new Date(value).toLocaleString("en-GB") : "-" },
-    { title: "Date", dataIndex: "DateAdded" },
+    { title: "Order Date", dataIndex: "DateAdded" },
   ], []);
 
   const consolidatedExportColumns = useMemo(() => [
@@ -297,6 +297,7 @@ export default function DeliveredOrdersTableReport({
         pageSize,
         taskType,
         statusIDs: effectiveStatusIDs,
+        dateFilterType: taskType === "completed" ? dateFilterType : undefined,
         checkSLA: false,
         searchTerm: searchTerm.trim() || undefined,
         vendorCode: isVendorOnly ? assignedVendorCode || undefined : navigationFilters.vendorCode || undefined,
