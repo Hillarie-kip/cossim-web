@@ -4,7 +4,7 @@
 export const PACKAGE_STATUSES = {
   VENDOR_CREATED: {
     orderStatusID: 101,
-    statusName: "Order Confirmed by Vendor",
+    statusName: "Order Created",
     phaseCode: "VENDOR",
     isTerminal: false,
     isFailure: false,
@@ -22,12 +22,12 @@ export const PACKAGE_STATUSES = {
   },
   HANDED_TO_DC_CARRIER: {
     orderStatusID: 103,
-    statusName: "Handed to DC Carrier",
+    statusName: "Order Received at Sorting Center",
     phaseCode: "INBOUND",
     isTerminal: false,
     isFailure: false,
     sortOrder: 103,
-    description: "Package left vendor, en-route to DC."
+    description: "Order has been scanned and received at the sorting center."
   },
   INBOUND_TO_DC: {
     orderStatusID: 202,
@@ -112,7 +112,7 @@ export const PACKAGE_STATUSES = {
   },
   RECEIVED_INTO_DC_STOCK: {
     orderStatusID: 304,
-    statusName: "Rescheduled by Rider",
+    statusName: "1st Attempt",
     phaseCode: "DC",
     isTerminal: false,
     isFailure: false,
@@ -121,7 +121,7 @@ export const PACKAGE_STATUSES = {
   },
   TRACKING_NUMBER_ASSIGNED: {
     orderStatusID: 305,
-    statusName: "2nd Attempt by Rider",
+    statusName: "2nd Attempt",
     phaseCode: "DC",
     isTerminal: false,
     isFailure: false,
@@ -137,23 +137,23 @@ export const PACKAGE_STATUSES = {
     sortOrder: 401,
     description: "Door-delivery flow."
   },
-  ASSIGNED_FOR_CUSTOMER_PICKUP: {
+  REVERSE_RECEIVED_AT_SORTING: {
     orderStatusID: 402,
-    statusName: "Returned to Vendor",
-    phaseCode: "ASSIGN",
+    statusName: "Reverse Received at Sorting Center",
+    phaseCode: "RETURN",
     isTerminal: false,
     isFailure: false,
     sortOrder: 402,
-    description: "Pickup at DC station."
+    description: "Returned order has been received at sorting and awaits handover to the vendor."
   },
-  ASSIGNED_TO_PACKAGING_CENTER: {
+  REVERSE_AWAITING_VENDOR_ACCEPTANCE: {
     orderStatusID: 403,
-    statusName: "Assigned to Packaging Center",
-    phaseCode: "ASSIGN",
+    statusName: "Reverse Received at Vendor Waiting",
+    phaseCode: "RETURN",
     isTerminal: false,
     isFailure: false,
     sortOrder: 403,
-    description: "Send to hub for (re)pack/merge/sort."
+    description: "Returned order has been handed to the vendor and awaits acceptance."
   },
   BATCHED_FOR_DELIVERY: {
     orderStatusID: 410,
@@ -175,7 +175,7 @@ export const PACKAGE_STATUSES = {
   },
   DELIVERY_ATTEMPTED: {
     orderStatusID: 304,
-    statusName: "Rescheduled by Rider",
+    statusName: "1st Attempt",
     phaseCode: "DELIVERY",
     isTerminal: false,
     isFailure: false,
@@ -228,31 +228,31 @@ export const PACKAGE_STATUSES = {
     description: "Collected; close or settle payment."
   },
   RETURN_REQUESTED_BY_CUSTOMER: {
-    orderStatusID: 401,
-    statusName: "In Transit to DC Return",
+    orderStatusID: 400,
+    statusName: "Reversed Orders",
     phaseCode: "RETURN",
     isTerminal: false,
     isFailure: false,
     sortOrder: 701,
-    description: "Customer declined/return asked."
+    description: "Order reversal initiated by the DC."
   },
   RETURN_IN_TRANSIT: {
     orderStatusID: 401,
-    statusName: "In Transit to DC Return",
+    statusName: "Reverse In Transit",
     phaseCode: "RETURN",
     isTerminal: false,
     isFailure: false,
     sortOrder: 702,
-    description: "En-route back to DC/vendor."
+    description: "Returned order is in transit back to the sorting center."
   },
   RETURNED_TO_VENDOR: {
-    orderStatusID: 402,
+    orderStatusID: 901,
     statusName: "Returned to Vendor",
     phaseCode: "RETURN",
-    isTerminal: false,
+    isTerminal: true,
     isFailure: false,
     sortOrder: 703,
-    description: "Received at vendor."
+    description: "Vendor accepted the return and the return lifecycle is complete."
   },
   RETURN_CLOSED: {
     orderStatusID: 704,
@@ -265,7 +265,7 @@ export const PACKAGE_STATUSES = {
   },
   PAYMENT_INITIATED: {
     orderStatusID: 801,
-    statusName: "Payment Pending",
+    statusName: "Delivered",
     phaseCode: "PAYMENT",
     isTerminal: false,
     isFailure: false,
@@ -274,9 +274,9 @@ export const PACKAGE_STATUSES = {
   },
   COD_COLLECTED: {
     orderStatusID: 802,
-    statusName: "Payment Received",
+    statusName: "Order Completed",
     phaseCode: "PAYMENT",
-    isTerminal: false,
+    isTerminal: true,
     isFailure: false,
     sortOrder: 802,
     description: "Cash received by rider/DC."
@@ -310,7 +310,7 @@ export const PACKAGE_STATUSES = {
   },
   SERVICE_FEE_REQUIRED: {
     orderStatusID: 801,
-    statusName: "Payment Pending",
+    statusName: "Delivered",
     phaseCode: "PAYMENT",
     isTerminal: false,
     isFailure: false,
@@ -355,37 +355,37 @@ export const PACKAGE_STATUSES = {
   },
   CLOSED_SUCCESS: {
     orderStatusID: 901,
-    statusName: "Accepted",
+    statusName: "Returned to Vendor",
     phaseCode: "CLOSED",
     isTerminal: true,
     isFailure: false,
     sortOrder: 901,
-    description: "Delivered or picked up, payment settled."
+    description: "Vendor accepted the return and the return lifecycle is complete."
   },
   CLOSED_CANCELLED: {
     orderStatusID: 902,
-    statusName: "Declined",
+    statusName: "Returns Declined",
     phaseCode: "CLOSED",
     isTerminal: true,
     isFailure: true,
     sortOrder: 902,
-    description: "Cancelled before fulfillment."
+    description: "Vendor return has been declined and is closed."
   },
   CLOSED_FAILED: {
     orderStatusID: 903,
-    statusName: "Closed (Failed)",
+    statusName: "Lost Item",
     phaseCode: "CLOSED",
     isTerminal: true,
     isFailure: true,
     sortOrder: 903,
-    description: "Irrecoverable failure."
+    description: "Shipment marked as lost; retained in the lost report after payment completion."
   }
 };
 
 // Helper constants for common status groups
-export const TERMINAL_STATUSES = [303, 402, 802, 901, 902];
+export const TERMINAL_STATUSES = [303, 802, 901, 902, 903];
 export const FAILURE_STATUSES = [306, 803, 902];
-export const SUCCESS_STATUSES = [303, 402, 802, 901];
+export const SUCCESS_STATUSES = [303, 802, 901];
 
 // Phase codes
 export const PHASE_CODES = {

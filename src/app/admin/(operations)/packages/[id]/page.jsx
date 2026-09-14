@@ -166,34 +166,34 @@ const PackageDetailPage = () => {
   const handleDeletePackage = async () => {
     if (isVendorOnly) return;
     const { value: notes } = await MySwal.fire({
-      title: "Delete Package",
-      text: `Are you sure you want to delete package ${packageData.OrderNO}?`,
+      title: "Reverse Package",
+      text: `Are you sure you want to reverse package ${packageData.OrderNO}?`,
       input: "textarea",
-      inputLabel: "Reason for deletion",
-      inputPlaceholder: "Enter reason for deletion...",
+      inputLabel: "Reason for reversal",
+      inputPlaceholder: "Enter reason for reversal...",
       showCancelButton: true,
       confirmButtonColor: "#dc3545",
-      confirmButtonText: "Delete",
+      confirmButtonText: "Reverse",
       cancelButtonColor: "#6c757d",
       cancelButtonText: "Cancel",
-      inputValidator: (value) => !value?.trim() ? "Please enter a reason for deletion" : undefined,
+      inputValidator: (value) => !value?.trim() ? "Please enter a reason for reversal" : undefined,
     });
 
     if (!notes) return;
 
     try {
       await handleUpdateShipmentStatus({
-        statusID: 902,
+        statusID: 400,
         orderNO: packageData.OrderNO,
         notes: notes.trim(),
         dcCode: "",
         riderCode: "",
       });
-      notify.success("Package has been deleted successfully.");
+      notify.success("Package has been marked for reversal.");
       router.push('/admin/packages');
     } catch (deleteError) {
-      console.error("Failed to delete package:", deleteError);
-      notify.error("Failed to delete package. Please try again.");
+      console.error("Failed to reverse package:", deleteError);
+      notify.error("Failed to reverse package. Please try again.");
     }
   };
 
@@ -279,7 +279,7 @@ const PackageDetailPage = () => {
             </Button>}
             {!isVendorOnly && <Button variant="danger" onClick={handleDeletePackage}>
               <Trash2 size={16} className="me-2" />
-              Delete
+              Reverse
             </Button>}
           </div>
         </div>

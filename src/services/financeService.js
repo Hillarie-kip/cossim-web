@@ -394,8 +394,10 @@ export const getVendorSettlementOrders = async (vendorCode) => {
     return response.data;
 };
 
-export const initiateVendorSettlement = async ({ vendorCode, referenceNO, proof, transferFee = 0 }) => {
+export const initiateVendorSettlement = async ({ vendorCode, referenceNO, proof, transferFee = 0, orderNOs, expectedRemittanceAmount }) => {
     const form = new FormData(); form.append('vendorCode', vendorCode); form.append('referenceNO', referenceNO); form.append('proof', proof); form.append('transferFee', transferFee);
+    orderNOs.forEach(orderNO => form.append('orderNOs', orderNO));
+    form.append('expectedRemittanceAmount', expectedRemittanceAmount);
     const response = await api.post(apiRoutes.finance.initiateVendorSettlement, form, { headers: { 'Content-Type': 'multipart/form-data' } });
     if (response.data?.Error) throw new Error(response.data.Message || 'Failed to initiate settlement');
     return response.data;

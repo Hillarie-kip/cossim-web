@@ -85,7 +85,7 @@ export default function DashboardPage(){
     ["Total COD",`KES ${money(readAnalyticsValue(summary,"TotalConfirmedCOD",0))}`,"Of orders confirmed",Box],
     ["Total  COD",`KES ${money(readAnalyticsValue(summary,"TotalDeliveredCOD",0))}`,"of delivered orders",PackageCheck],
     ["Remitted COD",`KES ${money(readAnalyticsValue(summary,"RemittedCOD",0))}`,"Settled or paid directly to vendor",Ship],
-    ["Remittance SLA",readAnalyticsValue(summary,"RemittanceSLAPercentage",null)==null?"N/A":`${Number(readAnalyticsValue(summary,"RemittanceSLAPercentage",0)).toFixed(1)}%`,"Delivered COD / remitted COD",CheckCircle2],
+    ["Remittance SLA",readAnalyticsValue(summary,"RemittanceSLAPercentage",null)==null?"N/A":`${Number(readAnalyticsValue(summary,"RemittanceSLAPercentage",0)).toFixed(1)}%`,"Remitted COD / delivered COD",CheckCircle2],
   ];
   const orderAmount=Number(readAnalyticsValue(summary,"OrderAmount",readAnalyticsValue(summary,"CashOnDeliveryAmount",0)));
   const paidAmount=Number(readAnalyticsValue(summary,"PaidAmount",0));

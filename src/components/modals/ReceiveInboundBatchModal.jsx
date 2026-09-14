@@ -17,9 +17,9 @@ const RECEIVE_STATUS_OPTIONS = [
 
 const DEFAULT_STATUS_ID = PACKAGE_STATUSES.ARRIVED_AT_DC.orderStatusID;
 const REVERSE_RECEIVE_STATUS = {
-  value: PACKAGE_STATUSES.RETURNED_TO_VENDOR.orderStatusID,
+  value: PACKAGE_STATUSES.REVERSE_RECEIVED_AT_SORTING.orderStatusID,
   label: "Orders to Return",
-  description: "Receive the consolidated return at this DC and make it available for consolidation back to HQ.",
+  description: "Receive the return at sorting and make it available for handover to the vendor.",
 };
 
 const ReceiveInboundBatchModal = ({

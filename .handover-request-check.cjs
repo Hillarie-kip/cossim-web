@@ -1,0 +1,5 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const s=fs.readFileSync('src/app/admin/(operations)/packages/page.jsx','utf8');let f,c=0,result;
+const a=s.indexOf('    const destinationDCCodes = inboundDestinationScope'),b=s.indexOf('  }, [searchTerm, startDate, endDate, inboundDestinationScope',a);
+const noop=()=>{};const ctx={inboundDestinationScope:Array(60).fill('DC').join(','),isVendorOnly:false,searchTerm:'',startDate:null,endDate:null,formatLocalDateOnly:noop,getSlaWindowStart:noop,setAllInboundBatches:x=>result=x,setInboundBatches:noop,setInboundBatchTotal:noop,setParentTaskCounts:noop,setInboundBatchesLoading:noop,window:{setTimeout:x=>{f=x},clearTimeout:noop},notify:{error:console.error},extractResponseList:r=>r.Data,getHandoverBatchList:async()=>{c++;return {TotalCount:1,Data:[{HandoverCode:'A',BatchType:'RETURN',ReceivedItems:3}]}}};
+vm.runInNewContext('(()=>{'+s.slice(a,b)+'})()',ctx);assert.equal(c,0);f();setImmediate(()=>{assert.equal(c,1);assert.equal(result[0]._ReceivedItems,3);assert.equal(result[0]._IsReverse,true);console.log('60-DC load uses one request, with no per-batch item fetches.');});

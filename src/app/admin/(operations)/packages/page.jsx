@@ -48,7 +48,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const isReceivedHandoverItem = (item) =>
-  [201, 402, 703].includes(Number(item.OrderStatusID ?? item.StatusID))
+  [201, 402, 403, 703, 901, 902].includes(Number(item.OrderStatusID ?? item.StatusID))
   || /RECEIVED|RETURNED TO VENDOR/i.test(item.StatusName || "");
 
 const getStatusName = (status) =>
@@ -188,23 +188,26 @@ const LOST_REASON_CODES = [
 const TASK_TYPE_BY_STATUS_ID = {
   101: "confirmed", // Order Confirmed by Vendor
   102: "dispatch",  // Order Picked by Courier
+  103: "dispatch",  // Order Received at Sorting Center
   201: "deliver",   // Received at DC
   202: "receive",   // In Transit to DC
   301: "deliver",   // Assigned to Rider
   302: "deliver",   // Out for Delivery
-  303: "completed", // Delivered
+  303: "delivered", // Delivered
   304: "deliver",   // Rescheduled by Rider
   305: "deliver",   // 2nd Attempt by Rider
   306: "deliver",   // 3rd Attempt by Rider
   307: "deliver",   // Re Assigned Order
-  401: "receive",   // In Transit to DC Return
-  402: "reversed",  // Returned to Vendor
+  400: "forwardReverse", // Reversed Orders
+  401: "reverseReceive", // Reverse In Transit
+  402: "reversed",  // Reverse Received at Sorting Center
+  403: "returned",  // Awaiting vendor acceptance
   801: "deliver",   // Payment Pending
   802: "completed", // Payment Received
   803: "deliver",   // Payment Failed
   804: "confirmed", // Payment Waived
   901: "completed", // Accepted
-  902: "reversed",  // Declined
+  902: "returned",  // Returns Declined
   111: "unassigned", // Express
   112: "unassigned", // Next Day
   113: "unassigned", // Same Day Consolidated
@@ -213,23 +216,27 @@ const TASK_TYPE_BY_STATUS_ID = {
 const TASK_TYPE_BY_STATUS_CODE = {
   ORDER_CONFIRMED: "confirmed",
   PICKED_BY_COURIER: "dispatch",
+  RECEIVED_AT_SORTING: "dispatch",
   RECEIVED_AT_DC: "deliver",
   IN_TRANSIT_TO_DC: "receive",
   ASSIGNED_TO_RIDER: "deliver",
   OUT_FOR_DELIVERY: "deliver",
-  DELIVERED: "completed",
+  DELIVERED: "delivered",
   RESCHEDULED: "deliver",
   DELIVERY_ATTEMPT_2: "deliver",
   DELIVERY_ATTEMPT_3: "deliver",
   RE_ASSIGNED: "deliver",
-  RETURN_IN_TRANSIT: "receive",
-  RETURNED_TO_VENDOR: "reversed",
+  RETURN_IN_TRANSIT: "reverseReceive",
+  REVERSED: "forwardReverse",
+  REVERSE_RECEIVED_AT_SORTING: "reversed",
+  REVERSE_AWAITING_VENDOR_ACCEPTANCE: "returned",
+  RETURNED_TO_VENDOR: "completed",
   PAYMENT_PENDING: "deliver",
   PAYMENT_RECEIVED: "completed",
   PAYMENT_FAILED: "deliver",
   PAYMENT_WAIVED: "confirmed",
   ACCEPTED: "completed",
-  DECLINED: "reversed",
+  DECLINED: "returned",
   EXPRESS: "unassigned",
   NEXT_DAY: "unassigned",
   SAME_DAY_CONSOLIDATED: "unassigned",
@@ -365,9 +372,12 @@ const inferExpectedSlaStage = (order) => {
   if ([201, 301, 302, 304, 307, 801, 803].includes(statusID)) return "First Attempt";
   if (statusID === 305) return "2nd Attempt";
   if (statusID === 306) return "3rd Attempt";
-  if ([303, 802, 901].includes(statusID)) return "Delivered";
-  if (statusID === 401) return "Moved to Reverse";
-  if (statusID === 402) return "Returned to Vendor";
+  if ([303, 802].includes(statusID)) return "Delivered";
+  if (statusID === 400) return "Reverse In Transit";
+  if (statusID === 401) return "Reverse Received at Sorting Center";
+  if (statusID === 402) return "Handed to Vendor";
+  if (statusID === 403) return "Vendor Acceptance";
+  if (statusID === 901) return "Returned to Vendor";
   if ([101, 804].includes(statusID)) return "Received at Cossim HQ";
   return null;
 };
@@ -478,6 +488,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [inboundBatchTotal, setInboundBatchTotal] = useState(0);
   const [inboundBatchesLoading, setInboundBatchesLoading] = useState(false);
   const [parentTaskCounts, setParentTaskCounts] = useState({ confirmed: 0, deliver: 0, dispatch: 0, receive: 0, forwardReverse: 0, reversed: 0, reverseReceive: 0 });
+  const [taskRefreshVersion, setTaskRefreshVersion] = useState(0);
   const [receiveBatch, setReceiveBatch] = useState(null);
   const [receiveItems, setReceiveItems] = useState([]);
   const [receiveItemsLoading, setReceiveItemsLoading] = useState(false);
@@ -649,11 +660,11 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
     let active = true;
     setInboundBatchesLoading(true);
-    Promise.all(destinationDCCodes.map((destinationDCCode) => getHandoverBatchList({
-        pageNo: 1,
+    const timer = window.setTimeout(() => { (async () => { const responses = []; let pageNo = 1; while (active) { const response = await getHandoverBatchList({
+        pageNo,
         pageSize: 1000,
         search: searchTerm || undefined,
-        DestinationDCCode: destinationDCCode,
+        DestinationDCCode: inboundDestinationScope,
         startDate: formatLocalDateOnly(getSlaWindowStart(startDate)),
         endDate: formatLocalDateOnly(endDate),
         IsInBound: 1,
@@ -663,40 +674,19 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         statusID: 1,
         orderBy: "DateAdded",
         sortDir: "DESC",
-      }))).then((responses) => {
+      }); if (!active) return []; responses.push(response); const rows = extractResponseList(response); if (!rows.length || pageNo * 1000 >= Number(response.TotalCount ?? response.totalCount ?? rows.length)) break; pageNo++; } return responses; })().then((responses) => {
       if (!active) return;
       const uniqueBatches = new Map(responses.flatMap(extractResponseList).map((batch) => [batch.HandoverCode, batch]));
       // Destination authorization and filtering are enforced by the API.
       const destinationBatches = [...uniqueBatches.values()];
-      return Promise.all(destinationBatches.map(async (batch) => {
-        try {
-          const batchDestinationDC = batch.ToDCCode || batch.DestinationDCCode || batch.DestinationCode;
-          const itemResponse = await fetchHandoverItems({ handoverCode: batch.HandoverCode, ToDCCode: batchDestinationDC, pageNo: 1, pageSize: 1000 });
-          const items = extractResponseList(itemResponse);
-          const batchType = String(batch.BatchType || "ORDER").trim().toUpperCase();
-          // Completed ORDER and REROUTE handovers are received through the
-          // normal Orders to Receive queue. RETURN batches stay isolated in
-          // Reversals to Receive.
-          const isReverse = batchType === "RETURN";
-          const receivedItems = items.filter(isReceivedHandoverItem).length;
-          return { ...batch, BatchType: batchType, _IsReverse: isReverse, _ReceivedItems: receivedItems, _LoadedItems: items.length };
-        } catch {
-          return { ...batch, _IsReverse: false, _ReceivedItems: 0 };
-        }
-      }));
-    }).then((enrichedBatches) => {
-      if (!active) return;
-      setAllInboundBatches(enrichedBatches.filter((batch) => {
-        const total = Math.max(Number(batch.TotalItems ?? batch.ItemCount ?? batch.ItemsCount ?? batch.TotalOrders ?? 0), batch._LoadedItems || 0);
-        // Keep unknown/empty batches visible; only remove proven complete receipts.
-        return !(total > 0 && batch._ReceivedItems >= total);
-      }));
+      setAllInboundBatches(destinationBatches.map(batch => ({ ...batch, _IsReverse: String(batch.BatchType || "ORDER").trim().toUpperCase() === "RETURN", _ReceivedItems: Number(batch.ReceivedItems || 0) })));
     }).catch((batchError) => {
       if (active) notify.error(batchError?.message || "Failed to load inbound batches");
     }).finally(() => {
       if (active) setInboundBatchesLoading(false);
     });
-    return () => { active = false; };
+    }, 300);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [searchTerm, startDate, endDate, inboundDestinationScope, isVendorOnly]);
 
   useEffect(() => {
@@ -786,6 +776,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const commonParams = {
       pageNo: 1,
       countOnly: true,
+      forceRefresh: taskRefreshVersion > 0,
+      searchTerm: searchTerm || undefined,
       requireDCScope: true,
       vendorCode: scopedVendorCode || undefined,
       toDCCode: isVendorOnly ? "__ALL__" : toDCCode || undefined,
@@ -801,7 +793,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       // Dispatch/handover orders leave the selected DC, so scope them by origin.
       fromDCCode: taskType === "dispatch" ? shipmentScopeDCCodes : undefined,
       toDCCode: taskType === "dispatch" ? undefined : commonParams.toDCCode,
-      // Returned orders are already identified by status 402/902. Enabling the
+      // Returns at sorting are identified by status 402. Enabling the
       // SLA predicate here hides valid, overdue returns from this queue.
       checkSLA: !["confirmed", "reversed"].includes(taskType),
       // Badge counts are independent, disposable requests. Do not let cached
@@ -813,7 +805,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     // reverseReceive is counted from inbound consolidated batches above, not
     // from the individual status-401 shipment rows.
     const countTaskTypes = ["deliver", "confirmed", "forwardReverse", "reversed", ...(!isVendorOnly ? ["dispatch"] : [])];
-    Promise.allSettled(countTaskTypes.map((taskType) => getShipmentOrders(taskCountParams(taskType)))).then((results) => {
+    const countTimer = window.setTimeout(() => { Promise.allSettled(countTaskTypes.map((taskType) => getShipmentOrders(taskCountParams(taskType)))).then((results) => {
       if (!active) return;
       setParentTaskCounts((current) => {
         const next = { ...current };
@@ -824,8 +816,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       });
     });
 
-    return () => { active = false; };
-  }, [vendorCode, fromDCCode, toDCCode, onlyActive, startDate, endDate, distributionCenterList, shipmentScopeDCCodes, clearShipmentOrder, isVendorOnly, loggedInVendorCode]);
+    }, 300); return () => { active = false; window.clearTimeout(countTimer); };
+  }, [vendorCode, fromDCCode, toDCCode, onlyActive, startDate, endDate, shipmentScopeDCCodes, clearShipmentOrder, isVendorOnly, loggedInVendorCode, scopedVendorCode, searchTerm, taskRefreshVersion]);
 
   const taskCounts = parentTaskCounts;
   useEffect(() => {
@@ -1143,6 +1135,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   // Handle refresh
   const handleRefresh = () => {
+    setTaskRefreshVersion((version) => version + 1);
     loadShipmentOrders({
       pageNo: 1,
       pageSize: pagination.pageSize,
@@ -1199,15 +1192,29 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 
   const handleConsolidate = () => openBatchPanel("dispatch");
 
+  const handleReceiveAtSorting = async () => {
+    if (!selectedOrdersForActions.length || selectedOrdersForActions.some((order) => Number(order.StatusID ?? order.OrderStatusID) !== 102)) {
+      return notify.error("Select courier-picked orders to receive at sorting.");
+    }
+    try {
+      await updateTaskOrders(selectedOrdersForActions, () => ({
+        statusID: 103,
+        notes: "Order scanned and received at sorting center",
+      }));
+      notify.success("Orders received at sorting center");
+    } catch (error) { notify.error(error.message || "Failed to receive orders at sorting"); }
+  };
+
   const handleDirectReturnToVendor = async () => {
     if (!selectedOrdersForActions.length) return notify.error("Select at least one order to return.");
+    if (selectedOrdersForActions.some((order) => Number(order.StatusID ?? order.OrderStatusID) !== 402)) return notify.error("Only returns received at sorting can be handed to the vendor.");
     const ordersWithoutVendor = selectedOrdersForActions.filter((order) => !String(order.VendorCode || "").trim());
     if (ordersWithoutVendor.length) {
       return notify.error(`${ordersWithoutVendor.length} selected package${ordersWithoutVendor.length === 1 ? " has" : "s have"} no vendor code. Assign the vendor before returning.`);
     }
     const { isConfirmed } = await MySwal.fire({
       title: "Return to vendor?",
-      text: `${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} will be marked Returned to Vendor.`,
+      text: `${selectedOrdersForActions.length} package${selectedOrdersForActions.length === 1 ? "" : "s"} will be handed to the vendor and await acceptance.`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Return to Vendor",
@@ -1216,8 +1223,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!isConfirmed) return;
     try {
       await updateTaskOrders(selectedOrdersForActions, (order) => ({
-        statusID: PACKAGE_STATUSES.CLOSED_SUCCESS.orderStatusID,
-        notes: "Return handed to vendor and closed successfully",
+        statusID: PACKAGE_STATUSES.REVERSE_AWAITING_VENDOR_ACCEPTANCE.orderStatusID,
+        notes: "Return handed to vendor; awaiting acceptance",
         extra: {
           dcCode: order.LatestLogDCCode || order.CurrentDCCode || order.OriginDCCode || order.DestinationDCCode,
           vendorCode: order.VendorCode,
@@ -1291,7 +1298,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (!actionDCCode) throw new Error("Choose a distribution center to continue.");
     const updates = orders.map((order) => ({ order, ...buildUpdate(order) }));
     await handleUpdateShipmentStatusBatch(updates.map(({ order, statusID, notes, extra = {} }) => ({ statusID, orderNO: order.OrderNO, notes, dcCode: extra.dcCode || actionDCCode, courierCode: extra.courierCode || extra.riderCode || "", vendorCode: extra.vendorCode || order.VendorCode || "" })));
-    await loadShipmentOrders({ pageNo: pagination.currentPage });
+    await loadShipmentOrders({ pageNo: pagination.currentPage, forceRefresh: true });
+    setTaskRefreshVersion((version) => version + 1);
     setSelectedRowKeys([]);
   };
 
@@ -2440,25 +2448,25 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     );
   };
 
-  // Handle delete package
+  // Handle reverse package
   const handleDeletePackage = async (record) => {
     if (isVendorOnly) return;
     const { value: notes } = await MySwal.fire({
-      title: 'Delete Package',
-      text: `Are you sure you want to delete package ${record.OrderNO}?`,
+      title: 'Reverse Package',
+      text: `Are you sure you want to reverse package ${record.OrderNO}?`,
       input: 'textarea',
       inputLabel: 'Notes (optional)',
-      inputPlaceholder: 'Enter reason for deletion...',
+      inputPlaceholder: 'Enter reason for reversal...',
       inputAttributes: {
         'aria-label': 'Type your notes here'
       },
       showCancelButton: true,
-      confirmButtonText: 'Delete',
+      confirmButtonText: "Reverse",
       confirmButtonColor: '#dc3545',
       cancelButtonText: 'Cancel',
       inputValidator: (value) => {
         if (!value) {
-          return 'Please enter a reason for deletion';
+          return 'Please enter a reason for reversal';
         }
       }
     });
@@ -2466,7 +2474,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     if (notes) {
       try {
         await handleUpdateShipmentStatus({
-          statusID: 902, // CLOSED_CANCELLED
+          statusID: 400, // Initiate reversal
           orderNO: record.OrderNO,
           notes: notes,
           dcCode: "",
@@ -2479,10 +2487,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           pageSize: pagination.pageSize,
         });
 
-        notify.success('Package has been deleted successfully.');
+        notify.success('Package has been marked for reversal.');
       } catch (error) {
-        console.error('Failed to delete package:', error);
-        notify.error('Failed to delete package. Please try again.');
+        console.error('Failed to reverse package:', error);
+        notify.error('Failed to reverse package. Please try again.');
       }
     }
   };
@@ -2644,7 +2652,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
             },
             {
               key: "delete",
-              label: "Delete",
+              label: "Reverse",
               icon: "feather-trash-2",
               onClick: () => handleDeletePackage(record),
             },
@@ -2960,7 +2968,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           <div className="packages-task-toolbar">
           <div className="packages-task-tabs" role="tablist" aria-label="Shipment tasks">
             {(taskModule === "forward" ? [
-              ["deliver", "Orders to Deliver"], ["forwardReverse", "Orders to Reverse"], ["confirmed", "Order Confirmed"], ["receive", "MU to Receive"], ["dispatch", "Orders to Dispatch"],
+              ["deliver", "Orders to Deliver"], ["forwardReverse", "Orders to Reverse"], ["confirmed", "Orders to Confirm"], ["receive", "MU to Receive"], ["dispatch", "Orders to Dispatch"],
             ] : [
               ["reversed", "Orders to Return"], ["reverseReceive", "Reversals to Receive"],
             ]).filter(([key]) => !isVendorOnly || !["receive", "dispatch", "reverseReceive"].includes(key)).map(([key, label]) => (
@@ -3047,6 +3055,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                 </div>}
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
+                  <button type="button" disabled={!selectedOrdersForActions.length || selectedOrdersForActions.some((order) => Number(order.StatusID ?? order.OrderStatusID) !== 102)} onClick={handleReceiveAtSorting}><i className="feather-check-square" />Receive at Sorting</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("rider")}><i className="feather-truck" />Assign Rider</button>
                   {!selectionHasThirdAttempt && <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("schedule")}><i className="feather-calendar" />Schedule</button>}
@@ -3375,7 +3384,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <button type="button" className={detailView === "items" ? "active" : ""} onClick={() => setDetailView("items")}><i className="feather-package" />Items</button>
                     {activeTask === "confirmed" && selectedRowKeys.length > 0 && <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>}
                     {roleCodes.has(RoleType.FINANCE) && canEditPackage(detailPanelOrder) && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
-                    {!isVendorOnly && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>}
+                    {!isVendorOnly && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Reverse</button>}
                   </div>
                   <div className="packages-detail-body">
                     {detailView === "general" && <>
@@ -4180,3 +4189,4 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 };
 
 export default PackagesList;
+

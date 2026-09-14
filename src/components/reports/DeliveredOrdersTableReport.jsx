@@ -62,7 +62,7 @@ export default function DeliveredOrdersTableReport({
   const assignedVendorCode = user?.AssignedVendor?.VendorCode || user?.AssignedVendor?.vendorCode || user?.VendorCode || user?.vendorCode || "";
   const isConsolidated = taskType === "consolidated";
   const effectiveStatusIDs = returnActions
-    ? ({ pending: "402", accepted: "901", declined: "902", all: "402,901,902" }[returnStatusFilter] || "402")
+    ? ({ pending: "403", accepted: "901", declined: "902", all: "403,901,902" }[returnStatusFilter] || "403")
     : statusIDs;
 
   const loadReport = async ({
@@ -155,6 +155,7 @@ export default function DeliveredOrdersTableReport({
   };
 
   const resolveReturn = async (order, action) => {
+    if (Number(order.StatusID ?? order.OrderStatusID) !== 403) return notify.error("Only returns awaiting vendor acceptance can be accepted or declined.");
     if (action === "decline" && !(isAdmin || isDCUser)) return notify.error("You are not allowed to decline returns.");
     if (action === "accept" && !(isVendorOnly || isAdmin || isDCUser)) return notify.error("You are not allowed to accept returns.");
     const label = action === "accept" ? "Accept" : "Decline";
@@ -181,7 +182,7 @@ export default function DeliveredOrdersTableReport({
       const response = await updateShipmentStatusBatch({ orders: [{ orderNO: order.OrderNO, statusID: action === "accept" ? 901 : 902, dcCode: order.CurrentDCCode || order.OriginDCCode || "", notes: action === "accept" ? "Return accepted" : `Return declined: ${reason}` }] });
       if (response?.Error) throw new Error(response.Message || `Failed to ${action} return`);
       notify.success(`Return ${action === "accept" ? "accepted" : "declined"}`);
-      await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm });
+      await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm, forceRefresh: true });
     } catch (error) { notify.error(error.message || `Failed to ${action} return`); }
   };
 
@@ -207,7 +208,7 @@ export default function DeliveredOrdersTableReport({
     { title: "COD / Paid / Balance", dataIndex: "CODAmount", width: 250, align: "right", render: (_, row) => <div><span className="d-block">COD: <strong>KES {money(row.CODAmount)}</strong></span><small className="d-block text-success">Paid: KES {money(row.PaidAmount)}</small><small className="d-block text-danger">Balance: KES {money(Math.max(0, Number(row.CODAmount || 0) - Number(row.PaidAmount || 0)))}</small><small className="d-block text-muted text-break">Ref: {text(row.PaymentTransactionRefs)}</small></div> },
     { title: "Date / Status", dataIndex: "DateAdded", width: 180, render: (value, row) => { const formatted = reportDateParts(value); const paymentDate = reportDateParts(row.PaymentDate); return <div><span className="d-block">{formatted.date}</span>{formatted.time && <small className="d-block">{formatted.time}</small>}<small className="d-block text-muted text-wrap">{text(row.StatusName || row.TaskManagementStatus)}</small>{row.PaymentDate && <small className="d-block text-success mt-1">Paid: {paymentDate.date}{paymentDate.time ? ` ${paymentDate.time}` : ""}</small>}</div>; } },
     ...(taskType === "delivered" ? [{ title: "Actions", dataIndex: "DeliveredActions", width: 150, fixed: "right", render: (_, row) => (isAdmin || isDCUser) ? <button className="btn btn-outline-warning btn-sm" title="Reverse delivery" onClick={() => reverseDelivery(row)}>Undo Delivery</button> : "-" }] : []),
-    ...(returnActions ? [{ title: "Actions", dataIndex: "ReturnActions", width: 180, fixed: "right", render: (_, row) => Number(row.StatusID) === 402 ? <div className="d-flex gap-1"><button className="btn btn-success btn-sm" onClick={() => resolveReturn(row, "accept")}>Accept</button>{(isAdmin || isDCUser) && <button className="btn btn-outline-danger btn-sm" onClick={() => resolveReturn(row, "decline")}>Decline</button>}</div> : <span className="text-muted">Resolved</span> }] : []),
+    ...(returnActions ? [{ title: "Actions", dataIndex: "ReturnActions", width: 180, fixed: "right", render: (_, row) => Number(row.StatusID) === 403 ? <div className="d-flex gap-1"><button className="btn btn-success btn-sm" onClick={() => resolveReturn(row, "accept")}>Accept</button>{(isAdmin || isDCUser) && <button className="btn btn-outline-danger btn-sm" onClick={() => resolveReturn(row, "decline")}>Decline</button>}</div> : <span className="text-muted">Resolved</span> }] : []),
   ], [allowPayment, isConsolidated, taskType]);
 
   const orderExportColumns = useMemo(() => [
