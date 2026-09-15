@@ -4,7 +4,7 @@ import React from "react";
 import Link from "../Link";
 
 
-const Error500 = () => {
+const Error500 = ({ onRetry } = {}) => {
     const router = useRouter();
   
     const goBack = () => {
@@ -23,12 +23,15 @@ const Error500 = () => {
         </div>
         <h3 className="h2 mb-3">Oops, something went wrong</h3>
         <p>
-          Server Error 500. We apologise and are fixing the problem Please try
-          again at a later stage
+          We couldn’t load this page. Reload to get the latest version, or try again shortly.
         </p>
-        <Link onClick={goBack} className="btn btn-primary">
+        <div className="d-flex justify-content-center flex-wrap gap-2">
+        <button type="button" onClick={() => window.location.reload()} className="btn btn-primary">Reload page</button>
+        {onRetry && <button type="button" onClick={onRetry} className="btn btn-outline-primary">Try again</button>}
+        <Link onClick={goBack} className="btn btn-outline-secondary">
           Go Back
         </Link>
+        </div>
       </div>
     </div>
   );

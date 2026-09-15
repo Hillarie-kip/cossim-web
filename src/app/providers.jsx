@@ -7,6 +7,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { GlobalFiltersProvider } from '@/contexts/GlobalFiltersContext'
 import { PWAProvider } from '@/contexts/PWAContext'
 import AppInstallPopup from '@/components/AppInstallPopup'
+import NavigationProvider from '@/components/NavigationLoader'
         
 export function Providers({ children }) {
   return (
@@ -14,7 +15,7 @@ export function Providers({ children }) {
         <PWAProvider>
           <AuthProvider>
             <GlobalFiltersProvider>
-              {children}
+              <NavigationProvider>{children}</NavigationProvider>
               <AppInstallPopup />
             </GlobalFiltersProvider>
           </AuthProvider>

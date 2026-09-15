@@ -50,7 +50,7 @@ export default function DeliveredOrdersTableReport({
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [returnStatusFilter, setReturnStatusFilter] = useState("pending");
+  const [returnStatusFilter, setReturnStatusFilter] = useState("all");
   const [dateFilterType, setDateFilterType] = useState(taskType === "completed" ? "paymentDate" : "orderDate"); // "orderDate" or "paymentDate"
   const [pagination, setPagination] = useState({ current: 1, pageSize: 1000, total: 0 });
   const { filters: navigationFilters } = useGlobalFilters();
@@ -103,7 +103,8 @@ export default function DeliveredOrdersTableReport({
         } : {
           pageNo: page,
           pageSize,
-          taskType,
+          // Returns span returned and completed tasks; filter by status alone.
+          taskType: returnActions ? undefined : taskType,
           statusIDs: effectiveStatusIDs,
           checkSLA: false,
           searchTerm: normalizedSearch || undefined,
@@ -295,7 +296,7 @@ export default function DeliveredOrdersTableReport({
       } : {
         pageNo: page,
         pageSize,
-        taskType,
+        taskType: returnActions ? undefined : taskType,
         statusIDs: effectiveStatusIDs,
         dateFilterType: taskType === "completed" ? dateFilterType : undefined,
         checkSLA: false,

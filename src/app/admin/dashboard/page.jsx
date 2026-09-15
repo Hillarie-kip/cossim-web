@@ -75,11 +75,15 @@ export default function DashboardPage(){
     const statusID=Number(readAnalyticsValue(row,"StatusID",0));
     return statusID===303||statusID===802?sum+Number(readAnalyticsValue(row,"OrderCount",0)):sum;
   },0);
+  const acceptedReturns=statusRows.reduce((sum,row)=>{
+    const statusID=Number(readAnalyticsValue(row,"StatusID",0));
+    return statusID===901?sum+Number(readAnalyticsValue(row,"OrderCount",0)):sum;
+  },0);
   const orderSummaryCards=[
     ["Received from vendor",number(readAnalyticsValue(summary,"TotalOrders",0)),"Selected period",Box],
     ["In transit",number(readAnalyticsValue(summary,"ActiveOrders",0)),"Currently in progress",Clock3],
     ["Delivered",number(deliveredOrders),`${percentage(deliveredOrders,total).toFixed(1)}% delivery rate`,CheckCircle2],
-    ["Failed / returned",number(readAnalyticsValue(summary,"FailedOrders",0)),`${Number(readAnalyticsValue(summary,"FailureRatePercentage",0)).toFixed(1)}% failure rate`,RotateCcw],
+    ["Accepted returns",number(acceptedReturns),`${percentage(acceptedReturns,total).toFixed(1)}% of orders`,RotateCcw],
   ];
   const financialSummaryCards=[
     ["Total COD",`KES ${money(readAnalyticsValue(summary,"TotalConfirmedCOD",0))}`,"Of orders confirmed",Box],
@@ -90,7 +94,6 @@ export default function DashboardPage(){
   const orderAmount=Number(readAnalyticsValue(summary,"OrderAmount",readAnalyticsValue(summary,"CashOnDeliveryAmount",0)));
   const paidAmount=Number(readAnalyticsValue(summary,"PaidAmount",0));
   const returnedOrders=Number(readAnalyticsValue(summary,"ReturnOrders",0));
-  const acceptedReturns=Number(readAnalyticsValue(summary,"AcceptedOrders",0));
   const slaCompliantOrders=Number(readAnalyticsValue(summary,"SLACompliantOrders",0));
   const slaCompliance=Number(readAnalyticsValue(summary,"SLACompliancePercentage",percentage(slaCompliantOrders,total)));
   const performanceCards=[

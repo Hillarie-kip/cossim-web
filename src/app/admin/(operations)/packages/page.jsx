@@ -698,6 +698,11 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }));
     if (!isReceiveTask) return;
     const taskBatches = allInboundBatches.filter((batch) => activeTask === "reverseReceive" ? batch._IsReverse : !batch._IsReverse);
+    // Use the same SLA duration shown in the table, across all loaded pages.
+    // Missing SLA values sort last; equal durations retain their existing order.
+    taskBatches.sort((a, b) =>
+      getOrderSlaTiming(b.MostUrgentOrder).elapsedMinutes - getOrderSlaTiming(a.MostUrgentOrder).elapsedMinutes
+    );
     setInboundBatches(taskBatches);
     setInboundBatchTotal(taskBatches.length);
   }, [activeTask, allInboundBatches, isReceiveTask]);
@@ -3285,7 +3290,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 {outboundBatchesLoading ? <div className="text-center py-4"><span className="spinner-border spinner-border-sm" /></div> : outboundBatches.length ? <>
                   <div className="d-flex flex-column gap-2" style={{ maxHeight: "calc(100vh - 330px)", overflowY: "auto", paddingRight: "6px" }}>
                     {outboundBatches.map((batch) => <div className="border rounded-3 p-2" key={batch.HandoverCode}>
-                      <div className="d-flex align-items-start justify-content-between gap-2"><div className="min-w-0"><strong className="text-primary d-block text-truncate">{batch.HandoverCode}</strong><small className="text-muted d-block">{batch.ToDCName || batch.ToDCCode || "No destination"}</small><small className="text-muted d-block">{formatPackageDate(batch.DateAdded)?.toLocaleString("en-GB") || "-"}</small></div><div className="d-flex gap-1 flex-shrink-0"><button type="button" className="btn btn-outline-primary btn-sm" onClick={() => openExistingBatchCompletion(batch, true)}>Edit</button><button type="button" className="btn btn-primary btn-sm" onClick={() => openExistingBatchCompletion(batch)}>Complete</button></div></div>
+                      <div className="d-flex align-items-start justify-content-between gap-2">
+                        <div className="min-w-0" style={{ overflowWrap: "anywhere" }}>
+                          <strong className="text-primary d-block text-truncate">{batch.HandoverCode}</strong>
+                          <small className="text-muted d-block"><span className="fw-semibold">Items: </span>{Number(batch.TotalItems ?? batch.ItemCount ?? batch.ItemsCount ?? batch.TotalOrders ?? batch._LoadedItems ?? 0).toLocaleString("en-KE")}</small>
+                          <small className="text-muted d-block"><span className="fw-semibold">Source DC: </span>{batch.FromDCName || batch.OriginDCName || batch.FromDCCode || batch.OriginDCCode || "Unknown"}</small>
+                          <small className="text-muted d-block"><span className="fw-semibold">Destination DC: </span>{batch.ToDCName || batch.DestinationDCName || batch.ToDCCode || batch.DestinationDCCode || "Unknown"}</small>
+                          <small className="text-muted d-block">{formatPackageDate(batch.DateAdded)?.toLocaleString("en-GB") || "-"}</small>
+                        </div>
+                        <div className="d-flex gap-1 flex-shrink-0"><button type="button" className="btn btn-outline-primary btn-sm" onClick={() => openExistingBatchCompletion(batch, true)}>Edit</button><button type="button" className="btn btn-primary btn-sm" onClick={() => openExistingBatchCompletion(batch)}>Complete</button></div>
+                      </div>
                     </div>)}
                   </div>
                   {outboundBatchTotal > outboundBatchPageSize && <div className="d-flex align-items-center justify-content-between gap-2 mt-3 pt-2 border-top">
@@ -4189,4 +4203,3 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
 };
 
 export default PackagesList;
-

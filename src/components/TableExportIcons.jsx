@@ -4,7 +4,6 @@ import React from 'react';
 import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 import Link from '@/components/Link';
 import ImageWithBasePath from '@/core/img/imagewithbasebath';
-import { exportToPDF, exportToExcel } from '@/utils/tableExport';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -77,6 +76,7 @@ const TableExportIcons = ({
     toast.loading(<ExportProgressToast label="Fetching records" current={0} total={0} />, { id: toastId });
 
     try {
+      const { exportToPDF } = await import('@/utils/tableExport');
       const result = await exportToPDF({
         data,
         columns: pdfColumns || columns,
@@ -114,6 +114,7 @@ const TableExportIcons = ({
     toast.loading(<ExportProgressToast label="Fetching records" current={0} total={0} />, { id: toastId });
 
     try {
+      const { exportToExcel } = await import('@/utils/tableExport');
       const result = await exportToExcel({
         data,
         columns: excelColumns || columns,

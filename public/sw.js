@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cossim-shell-v1'
+const CACHE_NAME = 'cossim-shell-v2'
 const APP_SHELL = ['/', '/manifest.json', '/favicon.png', '/icons/icon-192.png', '/icons/icon-512.png']
 
 self.addEventListener('install', (event) => {
@@ -14,7 +14,10 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) return
+  const url = new URL(event.request.url)
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return
+  // Next.js manages route payloads. Never cache them or replace them with HTML.
+  if (url.searchParams.has('_rsc') || event.request.headers.get('RSC') === '1' || url.pathname.startsWith('/api/')) return
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -24,6 +27,11 @@ self.addEventListener('fetch', (event) => {
         }
         return response
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
+      .catch(() => caches.match(event.request).then(async (cached) => {
+        if (cached) return cached
+        // A script request must never receive the offline HTML page.
+        if (event.request.mode === 'navigate') return (await caches.match('/')) || Response.error()
+        return Response.error()
+      }))
   )
 })

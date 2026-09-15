@@ -1,66 +1,23 @@
 "use client";
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { createContext, useContext, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
-const NavigationLoader = () => {
-  const [loading, setLoading] = useState(false);
+const NavigationContext = createContext(null);
+export const useSidebarNavigation = () => useContext(NavigationContext);
+
+export default function NavigationProvider({ children }) {
   const router = useRouter();
-
-  useEffect(() => {
-    const handleStart = () => setLoading(true);
-    const handleComplete = () => setLoading(false);
-
-    // Listen for route changes
-    const originalPush = router.push;
-    const originalReplace = router.replace;
-
-    router.push = (...args) => {
-      handleStart();
-      return originalPush.apply(router, args).finally(handleComplete);
-    };
-
-    router.replace = (...args) => {
-      handleStart();
-      return originalReplace.apply(router, args).finally(handleComplete);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
-
-  if (!loading) return null;
-
+  const [isPending, startTransition] = useTransition();
+  const navigate = (href) => startTransition(() => router.push(href));
   return (
-    <div className="navigation-loader">
-      <div className="loader-bar"></div>
-      <style jsx>{`
-        .navigation-loader {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          z-index: 9999;
-          height: 3px;
-          background: transparent;
-        }
-        
-        .loader-bar {
-          height: 100%;
-          background: linear-gradient(90deg, #007bff, #00d4ff);
-          width: 0%;
-          animation: progress 0.5s ease-in-out forwards;
-        }
-        
-        @keyframes progress {
-          0% { width: 0%; }
-          50% { width: 70%; }
-          100% { width: 100%; }
-        }
-      `}</style>
-    </div>
+    <NavigationContext.Provider value={navigate}>
+      {children}
+      {isPending && (
+        <div role="status" aria-live="polite" style={{ position: "fixed", top: 82, left: "50%", transform: "translateX(-50%)", zIndex: 10000, display: "flex", alignItems: "center", gap: 12, padding: "14px 24px", background: "#fff", color: "#c94d00", border: "1px solid #ffcfad", borderRadius: 10, boxShadow: "0 4px 20px #0002", pointerEvents: "none" }}>
+          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+          Loading page...
+        </div>
+      )}
+    </NavigationContext.Provider>
   );
-};
-
-export default NavigationLoader;
+}

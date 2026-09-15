@@ -2,9 +2,11 @@
 
 import Error500 from "@/components/errorpages/error500";
 import PropTypes from "prop-types";
+import { useEffect } from "react";
 
 export default function Error({ error, reset }) {
-    return <Error500 />;
+    useEffect(() => { console.error("Page failed to load:", error); }, [error]);
+    return <Error500 onRetry={reset} />;
 }
 
 
