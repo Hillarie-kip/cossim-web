@@ -130,6 +130,8 @@ const getUserHistoryNotes = (event) => {
   if (!rawNotes) return "-";
 
   const notes = String(rawNotes).trim();
+  const vendorNote = notes.match(/(?:^|;\s*)Vendor note:\s*(.+)$/i)?.[1]?.trim();
+  if (vendorNote) return `${vendorNote} (Vendor)`;
   const explicitNotes = notes.match(/(?:^|;\s*)Notes:\s*(.+)$/i)?.[1]?.trim();
   if (explicitNotes) return explicitNotes;
 
@@ -157,6 +159,14 @@ const getHistoryStatus = (event, dcOptions = [], order = null) => {
     .replace(/In Transit to DC/i, `In Transit to ${location}`)
     .replace(/Transfer Inbound to DC/i, `Transfer Inbound to ${location}`);
 };
+
+const VENDOR_NOTE_PREFIX = "Vendor note:";
+// Status recorded when a vendor deletes an unconfirmed order.
+const VENDOR_DELETED_STATUS_ID = 0;
+const DASHBOARD_STAGE_STATUS_IDS = { "1st-attempt": [304], "2nd-attempt": [305], "3rd-attempt": [306] };
+const DASHBOARD_STAGE_LABELS = { "1st-attempt": "1st Attempt", "2nd-attempt": "2nd Attempt", "3rd-attempt": "3rd Attempt" };
+const isVendorNote = (event) => String(event?.UserNotes ?? event?.userNotes ?? event?.Notes ?? event?.notes ?? event?.Note ?? event?.note ?? "").includes(VENDOR_NOTE_PREFIX);
+const hasVendorAction = (order) => Boolean(order?.HasVendorAction ?? order?.hasVendorAction ?? order?.VendorActioned ?? order?.vendorActioned);
 
 const isHistoryAttempt = (event) => /(?:1st|2nd|3rd|first|second|third)\s+attempt/i.test(String(event?.StatusName || event?.StatusCode || ""));
 
@@ -428,6 +438,7 @@ const getPackageQueryFilters = () => {
     task: params.get("task") || storedTask,
     taskModule: params.get("taskModule") || "",
     fromDashboard: params.get("from") === "dashboard",
+    stage: params.get("stage") || "",
     startDate: parsePackageFilterDate(params.get("startDate")),
     endDate: parsePackageFilterDate(params.get("endDate")),
   };
@@ -483,6 +494,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const [detailHistory, setDetailHistory] = useState([]);
   const [detailDataLoading, setDetailDataLoading] = useState(false);
   const [detailView, setDetailView] = useState("general");
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
+  const [dashboardStage, setDashboardStage] = useState("");
+  const [vendorActionedOnly, setVendorActionedOnly] = useState(false);
   const [inboundBatches, setInboundBatches] = useState([]);
   const [allInboundBatches, setAllInboundBatches] = useState([]);
   const [inboundBatchTotal, setInboundBatchTotal] = useState(0);
@@ -646,7 +660,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [detailPanelOrder]);
+  }, [detailPanelOrder, detailRefreshKey]);
 
   useEffect(() => {
     const destinationDCCodes = inboundDestinationScope.split(",").map((code) => code.trim()).filter(Boolean);
@@ -831,12 +845,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     window.dispatchEvent(new CustomEvent("cossim:task-counts-updated", { detail: counts }));
   }, [parentTaskCounts]);
   const taskOrders = useMemo(
-    () => [...shipmentOrderList].sort((a, b) => {
+    () => shipmentOrderList.filter((order) => {
+      if (activeTask === "deliver" && dashboardStage) {
+        const statusID = Number(order.StatusID ?? order.OrderStatusID);
+        if (!DASHBOARD_STAGE_STATUS_IDS[dashboardStage].includes(statusID)) return false;
+      }
+      return !(isVendorOnly && vendorActionedOnly && !hasVendorAction(order));
+    }).sort((a, b) => {
         const slaDifference = getOrderSlaState(a).priority - getOrderSlaState(b).priority;
         return slaDifference || getOrderSlaTiming(b).elapsedMinutes - getOrderSlaTiming(a).elapsedMinutes
           || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
       }),
-    [shipmentOrderList]
+    [shipmentOrderList, activeTask, dashboardStage, isVendorOnly, vendorActionedOnly]
   );
   const taskPageLoading = isReceiveTask
     ? inboundBatchesLoading && inboundBatches.length === 0
@@ -1060,6 +1080,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         ? queryFilters.taskModule
         : resolvedInitialTask === "reverseReceive" ? "reverse" : "forward");
     setShowDashboardBack(queryFilters.fromDashboard);
+    setDashboardStage(DASHBOARD_STAGE_STATUS_IDS[queryFilters.stage] && resolvedInitialTask === "deliver" ? queryFilters.stage : "");
 
     setSearchTerm(queryFilters.searchTerm || "");
     setSelectedStatusName(selectedInitialStatus);
@@ -2453,50 +2474,67 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     );
   };
 
-  // Handle reverse package
+  // Vendors may delete their own orders until they are confirmed (picked up).
   const handleDeletePackage = async (record) => {
-    if (isVendorOnly) return;
-    const { value: notes } = await MySwal.fire({
-      title: 'Reverse Package',
-      text: `Are you sure you want to reverse package ${record.OrderNO}?`,
-      input: 'textarea',
-      inputLabel: 'Notes (optional)',
-      inputPlaceholder: 'Enter reason for reversal...',
-      inputAttributes: {
-        'aria-label': 'Type your notes here'
-      },
+    if (!isVendorOnly || !record?.OrderNO) return;
+    const { isConfirmed } = await MySwal.fire({
+      title: "Delete order",
+      text: `Delete unconfirmed order ${record.OrderNO}? This cannot be undone.`,
       showCancelButton: true,
-      confirmButtonText: "Reverse",
-      confirmButtonColor: '#dc3545',
-      cancelButtonText: 'Cancel',
-      inputValidator: (value) => {
-        if (!value) {
-          return 'Please enter a reason for reversal';
-        }
-      }
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc3545",
+      cancelButtonText: "Cancel",
     });
+    if (!isConfirmed) return;
 
-    if (notes) {
-      try {
-        await handleUpdateShipmentStatus({
-          statusID: 400, // Initiate reversal
-          orderNO: record.OrderNO,
-          notes: notes,
-          dcCode: "",
-          riderCode: ""
-        });
+    try {
+      await handleUpdateShipmentStatusBatch([{
+        statusID: VENDOR_DELETED_STATUS_ID,
+        orderNO: record.OrderNO,
+        notes: "Order deleted by vendor before confirmation",
+        dcCode: "",
+        riderCode: "",
+        vendorCode: record.VendorCode || loggedInVendorCode || "",
+      }]);
+      setDetailOrder(null);
+      setSelectedRowKeys([]);
+      await loadShipmentOrders({ pageNo: pagination.currentPage, pageSize: pagination.pageSize, forceRefresh: true });
+      notify.success("Order deleted.");
+    } catch (error) {
+      console.error("Failed to delete order:", error);
+      notify.error("Failed to delete order. Please try again.");
+    }
+  };
 
-        // Refresh the list after successful deletion
-        loadShipmentOrders({
-          pageNo: pagination.currentPage,
-          pageSize: pagination.pageSize,
-        });
+  // Vendors add notes to orders that are out for delivery; they show in the order history.
+  const handleAddVendorNote = async (record) => {
+    if (!isVendorOnly || !record?.OrderNO) return;
+    const { value: note } = await MySwal.fire({
+      title: "Add note",
+      text: `Note for order ${record.OrderNO}`,
+      input: "textarea",
+      inputPlaceholder: "Enter your note...",
+      showCancelButton: true,
+      confirmButtonText: "Save note",
+      inputValidator: (value) => (!String(value || "").trim() ? "Please enter a note" : undefined),
+    });
+    if (!note) return;
 
-        notify.success('Package has been marked for reversal.');
-      } catch (error) {
-        console.error('Failed to reverse package:', error);
-        notify.error('Failed to reverse package. Please try again.');
-      }
+    try {
+      await handleUpdateShipmentStatusBatch([{
+        statusID: Number(record.StatusID ?? record.OrderStatusID),
+        orderNO: record.OrderNO,
+        notes: `${VENDOR_NOTE_PREFIX} ${note.trim()}`,
+        dcCode: "",
+        riderCode: "",
+        vendorCode: record.VendorCode || loggedInVendorCode || "",
+      }]);
+      setDetailRefreshKey((key) => key + 1);
+      loadShipmentOrders({ pageNo: pagination.currentPage, pageSize: pagination.pageSize, forceRefresh: true });
+      notify.success("Note added.");
+    } catch (error) {
+      console.error("Failed to add note:", error);
+      notify.error("Failed to add note. Please try again.");
     }
   };
 
@@ -2655,12 +2693,6 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               icon: "feather-credit-card",
               href: `/admin/service-fee-payment?orderNO=${record.OrderNO}`,
             },
-            {
-              key: "delete",
-              label: "Reverse",
-              icon: "feather-trash-2",
-              onClick: () => handleDeletePackage(record),
-            },
           ].filter(Boolean)}
         />
       ),
@@ -2704,6 +2736,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               >
                 {getDisplayText(record.StatusName || record.StatusCode)}
               </span>
+              {hasVendorAction(record) && <span className="badge bg-warning text-dark ms-1" title="Vendor has actioned this order"><i className="feather-flag" /> Vendor action</span>}
             </div>
           </div>
         );
@@ -2985,6 +3018,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 className={`packages-task-tab ${activeTask === key ? "packages-task-tab-active" : ""}`}
                 onClick={() => {
                   clearError();
+                  setDashboardStage("");
                   setActiveTask(key);
                   persistActiveTask(key);
                   setDetailOrder(null);
@@ -3002,6 +3036,16 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               </button>
             ))}
           </div>
+          {dashboardStage && activeTask === "deliver" && (
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setDashboardStage("")} title="Clear stage filter">
+              Stage: {DASHBOARD_STAGE_LABELS[dashboardStage]} <X size={14} />
+            </button>
+          )}
+          {isVendorOnly && (
+            <button type="button" className={`btn btn-sm ${vendorActionedOnly ? "btn-warning" : "btn-outline-warning"}`} aria-pressed={vendorActionedOnly} onClick={() => setVendorActionedOnly((value) => !value)}>
+              <i className="feather-flag me-1" />Vendor actioned
+            </button>
+          )}
           {isVendorOnly && (
             <button type="button" onClick={() => setShowImportModal(true)} className="btn btn-outline-primary btn-sm d-flex align-items-center">
               <UploadCloud className="me-2 iconsize" />Import Orders
@@ -3123,7 +3167,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   const totalItems = Number(record.TotalItems ?? record.ItemCount ?? record.ItemsCount ?? record.TotalOrders ?? record._LoadedItems ?? 0);
                   return <article className={`packages-mobile-card ${selected ? "is-selected" : ""}`} key={recordKey}>
                     <div className="packages-mobile-card-head">
-                      <span className="packages-mobile-card-status">{isReceiveTask ? `${Number(record._ReceivedItems || 0)}/${totalItems} received` : getDisplayText(record.StatusName || record.TaskManagementStatus)}</span>
+                      <span className="packages-mobile-card-status">{isReceiveTask ? `${Number(record._ReceivedItems || 0)}/${totalItems} received` : getDisplayText(record.StatusName || record.TaskManagementStatus)}{!isReceiveTask && hasVendorAction(record) && <span className="badge bg-warning text-dark ms-1">Vendor action</span>}</span>
                       <label className="packages-mobile-card-select">
                         <input
                           type="checkbox"
@@ -3398,7 +3442,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <button type="button" className={detailView === "items" ? "active" : ""} onClick={() => setDetailView("items")}><i className="feather-package" />Items</button>
                     {activeTask === "confirmed" && selectedRowKeys.length > 0 && <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>}
                     {roleCodes.has(RoleType.FINANCE) && canEditPackage(detailPanelOrder) && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
-                    {!isVendorOnly && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Reverse</button>}
+                    {isVendorOnly && activeTask === "confirmed" && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>}
+                    {isVendorOnly && activeTask === "deliver" && <button type="button" onClick={() => handleAddVendorNote(detailPanelOrder)}><i className="feather-edit-3" />Add note</button>}
                   </div>
                   <div className="packages-detail-body">
                     {detailView === "general" && <>
@@ -3456,7 +3501,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                                   <strong>{getHistoryStatus(event, dcOptions, detailPanelOrder)}</strong>
                                   <div className="packages-detail-history-details">
                                     <span>Actioned by: {event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span>
-                                    {isHistoryAttempt(event) && <span>Notes: {getUserHistoryNotes(event)}</span>}
+                                    {(isHistoryAttempt(event) || isVendorNote(event)) && <span>Notes: {getUserHistoryNotes(event)}</span>}
                                   </div>
                                 </div>
                                 <time><i className="feather-calendar" aria-hidden="true" />{formatPackageDate(event.EventTime || event.DateAdded)?.toLocaleString("en-GB") || "-"}</time>

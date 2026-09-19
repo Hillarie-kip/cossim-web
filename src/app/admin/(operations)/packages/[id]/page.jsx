@@ -277,10 +277,6 @@ const PackageDetailPage = () => {
               <RefreshCw size={16} className="me-2" />
               Update Status
             </Button>}
-            {!isVendorOnly && <Button variant="danger" onClick={handleDeletePackage}>
-              <Trash2 size={16} className="me-2" />
-              Reverse
-            </Button>}
           </div>
         </div>
 

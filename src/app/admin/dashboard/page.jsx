@@ -18,9 +18,9 @@ const orderStatusStages = [
   { StatusName: "Order Confirmed", PhaseCode: "VENDOR", target: "/admin/packages?task=confirmed&taskModule=forward&from=dashboard", aliases: ["ORDER CONFIRMED", "CONFIRMED BY VENDOR", "VENDOR CREATED"] },
   { StatusName: "HQ Hub", PhaseCode: "HQ HUB", target: "/admin/packages?task=dispatch&taskModule=forward&from=dashboard", aliases: ["HQ HUB", "PICKED BY COURIER", "ORDER PICKED BY COURIER", "HANDED TO DC CARRIER"] },
   { StatusName: "Received at DC", PhaseCode: "DC", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["RECEIVED AT DC", "ARRIVED AT DC", "RECEIVED INTO DC"] },
-  { StatusName: "1st Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["1ST ATTEMPT", "FIRST ATTEMPT", "DELIVERY ATTEMPTED"] },
-  { StatusName: "2nd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["2ND ATTEMPT", "SECOND ATTEMPT"] },
-  { StatusName: "3rd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&from=dashboard", aliases: ["3RD ATTEMPT", "THIRD ATTEMPT"] },
+  { StatusName: "1st Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&stage=1st-attempt&from=dashboard", aliases: ["1ST ATTEMPT", "FIRST ATTEMPT", "DELIVERY ATTEMPTED"] },
+  { StatusName: "2nd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&stage=2nd-attempt&from=dashboard", aliases: ["2ND ATTEMPT", "SECOND ATTEMPT"] },
+  { StatusName: "3rd Attempt", PhaseCode: "DELIVERY", target: "/admin/packages?task=deliver&taskModule=forward&stage=3rd-attempt&from=dashboard", aliases: ["3RD ATTEMPT", "THIRD ATTEMPT"] },
   { StatusName: "Returned Orders", PhaseCode: "RETURN", target: "/admin/packages?task=reversed&taskModule=reverse&from=dashboard", aliases: ["RETURN LEG", "RETURN IN TRANSIT", "RETURNED TO VENDOR", "RETURN REQUESTED"] },
   { StatusName: "Completed", PhaseCode: "CLOSED", target: "/admin/reports/completed-orders", aliases: ["COMPLETED", "DELIVERED", "CLOSED SUCCESS", "ACCEPTED", "PICKED UP BY CUSTOMER"] },
 ];
