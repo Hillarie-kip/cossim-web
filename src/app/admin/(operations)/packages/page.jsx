@@ -132,6 +132,8 @@ const getUserHistoryNotes = (event) => {
   const notes = String(rawNotes).trim();
   const vendorNote = notes.match(/(?:^|;\s*)Vendor note:\s*(.+)$/i)?.[1]?.trim();
   if (vendorNote) return `${vendorNote} (Vendor)`;
+  const returnNote = notes.match(/(?:^|;\s*)Return (?:note|attempt):\s*(.+)$/i)?.[1]?.trim();
+  if (returnNote) return returnNote;
   const explicitNotes = notes.match(/(?:^|;\s*)Notes:\s*(.+)$/i)?.[1]?.trim();
   if (explicitNotes) return explicitNotes;
 
@@ -161,11 +163,13 @@ const getHistoryStatus = (event, dcOptions = [], order = null) => {
 };
 
 const VENDOR_NOTE_PREFIX = "Vendor note:";
+const RETURN_NOTE_PREFIX = "Return note:";
+const RETURN_ATTEMPT_PREFIX = "Return attempt:";
 // Status recorded when a vendor deletes an unconfirmed order.
 const VENDOR_DELETED_STATUS_ID = 0;
 const DASHBOARD_STAGE_STATUS_IDS = { "1st-attempt": [304], "2nd-attempt": [305], "3rd-attempt": [306] };
 const DASHBOARD_STAGE_LABELS = { "1st-attempt": "1st Attempt", "2nd-attempt": "2nd Attempt", "3rd-attempt": "3rd Attempt" };
-const isVendorNote = (event) => String(event?.UserNotes ?? event?.userNotes ?? event?.Notes ?? event?.notes ?? event?.Note ?? event?.note ?? "").includes(VENDOR_NOTE_PREFIX);
+const isVendorNote = (event) => /(?:Vendor note|Return note|Return attempt):/.test(String(event?.UserNotes ?? event?.userNotes ?? event?.Notes ?? event?.notes ?? event?.Note ?? event?.note ?? ""));
 const hasVendorAction = (order) => Boolean(order?.HasVendorAction ?? order?.hasVendorAction ?? order?.VendorActioned ?? order?.vendorActioned);
 
 const isHistoryAttempt = (event) => /(?:1st|2nd|3rd|first|second|third)\s+attempt/i.test(String(event?.StatusName || event?.StatusCode || ""));
@@ -1229,6 +1233,37 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       }));
       notify.success("Orders received at sorting center");
     } catch (error) { notify.error(error.message || "Failed to receive orders at sorting"); }
+  };
+
+  // Admin notes / attempts on Orders to Return keep the order's current status and are recorded in its history.
+  const handleReturnOrderNote = async (kind) => {
+    if (!selectedOrdersForActions.length) return notify.error("Select at least one order.");
+    const isAttempt = kind === "attempt";
+    const { value: note } = await MySwal.fire({
+      title: isAttempt ? "Mark return attempt" : "Add note",
+      text: `${selectedOrdersForActions.length} selected order${selectedOrdersForActions.length === 1 ? "" : "s"}`,
+      input: "textarea",
+      inputPlaceholder: isAttempt ? "Outcome of the attempt (e.g. vendor unreachable)..." : "Enter your note...",
+      showCancelButton: true,
+      confirmButtonText: isAttempt ? "Mark attempt" : "Save note",
+      inputValidator: (value) => (!String(value || "").trim() ? "Please enter a note" : undefined),
+    });
+    if (!note) return;
+    try {
+      await updateTaskOrders(selectedOrdersForActions, (order) => ({
+        statusID: Number(order.StatusID ?? order.OrderStatusID),
+        notes: `${isAttempt ? RETURN_ATTEMPT_PREFIX : RETURN_NOTE_PREFIX} ${note.trim()}`,
+        extra: {
+          dcCode: order.LatestLogDCCode || order.CurrentDCCode || order.OriginDCCode || order.DestinationDCCode,
+          vendorCode: order.VendorCode,
+        },
+      }));
+      setDetailRefreshKey((key) => key + 1);
+      notify.success(isAttempt ? "Attempt recorded." : "Note added.");
+    } catch (error) {
+      console.error("Failed to record return note:", error);
+      notify.error("Failed to save. Please try again.");
+    }
   };
 
   const handleDirectReturnToVendor = async () => {
@@ -3112,6 +3147,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("reroute")}><i className="feather-navigation" />Reroute</button>
                   <button type="button" className="warning" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle" />Mark Lost</button>
                 </div>}
+                {activeTask === "reversed" && <>
+                  <button type="button" className="btn btn-outline-secondary btn-sm d-flex align-items-center" disabled={!selectedRowKeys.length} onClick={() => handleReturnOrderNote("note")}><i className="feather-edit-3 me-2" />Add note</button>
+                  <button type="button" className="btn btn-outline-primary btn-sm d-flex align-items-center" disabled={!selectedRowKeys.length} onClick={() => handleReturnOrderNote("attempt")}><i className="feather-repeat me-2" />Mark attempt</button>
+                </>}
                 {(activeTask === "reversed" || activeTask === "forwardReverse") && selectedRowKeys.length > 0 && <button type="button" className="btn btn-outline-danger btn-sm d-flex align-items-center" onClick={() => handleDeliveryAction("lost")}><i className="feather-alert-triangle me-2" />Mark Lost</button>}
               </div>
               }
