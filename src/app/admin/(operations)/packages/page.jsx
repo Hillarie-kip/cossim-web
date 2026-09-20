@@ -1825,7 +1825,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           const slaDays = Number.isFinite(configuredSlaHours) && configuredSlaHours > 0
             ? Math.ceil(configuredSlaHours / 24)
             : 7;
-          const lastAllowed = new Date(dateAdded);
+          // Orders already at a delivery-attempt stage are rescheduled well after Date Added, so the
+          // window is counted from today; anchoring on Date Added would always reject them.
+          const statusID = Number(order.OrderStatusID ?? order.StatusID);
+          const lastAllowed = new Date([201, 301, 302, 304, 305, 307, 801, 803].includes(statusID) ? today : dateAdded);
           lastAllowed.setHours(0, 0, 0, 0);
           lastAllowed.setDate(lastAllowed.getDate() + slaDays);
           return { lastAllowed, slaDays };
