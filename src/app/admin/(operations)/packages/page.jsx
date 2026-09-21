@@ -428,6 +428,20 @@ const getOrderSlaTiming = (order) => {
   };
 };
 
+const getOrderSlaMaximum = (order) => {
+  const minutes = Number(order?.SLAMaximumMinutes ?? order?.slaMaximumMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return `${days} ${days === 1 ? "day" : "days"}`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+};
+
 const getPackageQueryFilters = () => {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
@@ -2957,7 +2971,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const date = formatPackageDate(order.DateAdded);
         const sla = getOrderSlaState(order);
         const timing = getOrderSlaTiming(order);
-        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{timing.difference}</strong></div><span>Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
+        const maximum = getOrderSlaMaximum(order);
+        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{maximum || timing.difference}</strong></div><span>{maximum ? `${timing.difference} elapsed · ` : ""}Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
       },
     },
     {
