@@ -181,7 +181,7 @@ export default function DeliveredOrdersTableReport({
     const reason = action === "decline" ? confirmation.value : "";
     try {
       const response = await updateShipmentStatusBatch({ orders: [{ orderNO: order.OrderNO, statusID: action === "accept" ? 901 : 902, dcCode: order.CurrentDCCode || order.OriginDCCode || "", notes: action === "accept" ? "Return accepted" : `Return declined: ${reason}` }] });
-      if (response?.Error) throw new Error(response.Message || `Failed to ${action} return`);
+      if (response?.Error) throw new Error(response.Data?.find((result) => result?.Error)?.Message || response.Message || `Failed to ${action} return`);
       notify.success(`Return ${action === "accept" ? "accepted" : "declined"}`);
       await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm, forceRefresh: true });
     } catch (error) { notify.error(error.message || `Failed to ${action} return`); }

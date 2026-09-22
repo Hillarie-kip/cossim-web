@@ -424,6 +424,7 @@ const getOrderSlaTiming = (order) => {
     elapsedMinutes: difference === null ? -1 : Number(differenceValue) * (
       ["day", "days"].includes(normalizedUnit) ? 1440 : ["hour", "hours", "hr", "hrs"].includes(normalizedUnit) ? 60 : 1),
     difference: difference === null ? "-" : `${difference} ${abbreviateSlaUnit(rawUnit, differenceValue)}`.trim(),
+    limit: formattedThreshold === null ? "-" : `${formattedThreshold} ${abbreviateSlaUnit(rawUnit, thresholdValue)}`.trim(),
     expected: expectedStage || (formattedThreshold === null ? "-" : `${formattedThreshold} ${abbreviateSlaUnit(rawUnit, thresholdValue)}`.trim()),
   };
 };
@@ -2797,7 +2798,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     {
       title: (
         <div className="d-flex flex-column gap-1">
-          <span>SLA</span>
+          <span>Stage SLA</span>
           <span>Date Added</span>
         </div>
       ),
@@ -2816,9 +2817,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
           <div className="packages-sla-date-cell py-1">
             <div className="packages-sla-value" title={sla.label} style={{ color: sla.color }}>
               <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: sla.color, flex: "0 0 9px" }} />
-              <strong>{timing.difference}</strong>
+              <strong>{timing.difference} elapsed</strong>
             </div>
-            <span className="packages-date-time">Expected {timing.expected}</span>
+            <span className="packages-date-time">Limit {timing.limit} · Expected {timing.expected}</span>
             <span className="packages-date-time allow-wrap">
               {date ? date.toLocaleString("en-GB") : "-"}
             </span>
@@ -3156,6 +3157,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                 {activeTask === "forwardReverse" && (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE)) && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for Orders to Reverse">
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>
                 </div>}
+                {activeTask === "forwardReverse" && (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE)) && <button type="button" className="btn btn-outline-primary btn-sm d-flex align-items-center" disabled={!selectedRowKeys.length} onClick={() => handleReturnOrderNote("attempt")}><i className="feather-repeat me-2" />Mark attempt</button>}
                 {activeTask === "dispatch" && <div className="packages-delivery-actions" role="group" aria-label="Delivery actions for orders to dispatch">
                   <button type="button" disabled={!selectedOrdersForActions.length || selectedOrdersForActions.some((order) => Number(order.StatusID ?? order.OrderStatusID) !== 102)} onClick={handleReceiveAtSorting}><i className="feather-check-square" />Receive at Sorting</button>
                   <button type="button" disabled={!selectedRowKeys.length} onClick={() => handleDeliveryAction("pus")}><i className="feather-map-pin" />Delivery</button>

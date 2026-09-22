@@ -18,16 +18,16 @@ const NORMAL_FLOW = [
     icon: "package",
   },
   {
-    statusCode: "RECEIVED_AT_DC",
-    label: "Received at DC",
-    phaseCode: "DC",
-    icon: "home",
-  },
-  {
     statusCode: "IN_TRANSIT_TO_DC",
     label: "In Transit",
     phaseCode: "INBOUND",
     icon: "truck",
+  },
+  {
+    statusCode: "RECEIVED_AT_DC",
+    label: "Received at DC",
+    phaseCode: "DC",
+    icon: "home",
   },
   {
     statusCode: "ASSIGNED_TO_RIDER",
@@ -97,10 +97,18 @@ const TrackingComponent = ({
 
   const firstEvent = orderedTimeline[0] || null;
 
-  const latestEvent =
+  const mostRecentEvent =
     orderedTimeline.length > 0
       ? orderedTimeline[orderedTimeline.length - 1]
       : null;
+
+  const completedEvent = [...orderedTimeline].reverse().find(
+    (event) => String(event.StatusCode || "").toUpperCase() === "ACCEPTED"
+  );
+  const deliveredEvent = [...orderedTimeline].reverse().find(
+    (event) => String(event.StatusCode || "").toUpperCase() === "DELIVERED"
+  );
+  const latestEvent = completedEvent || deliveredEvent || mostRecentEvent;
 
   const orderNo =
     latestEvent?.OrderNO ||
@@ -344,10 +352,6 @@ const TrackingComponent = ({
       ])
     );
 
-    const reachedCodes = new Set(
-      eventsByCode.keys()
-    );
-
     const latestNormalEvent =
       normalFlowEvents.length > 0
         ? normalFlowEvents[
@@ -355,9 +359,12 @@ const TrackingComponent = ({
           ]
         : null;
 
-    const latestNormalCode = String(
-      latestNormalEvent?.StatusCode || ""
-    ).toUpperCase();
+    const latestNormalCode =
+      String(latestEvent?.StatusCode || "").toUpperCase() === "ACCEPTED"
+        ? "DELIVERED"
+        : String(
+            deliveredEvent?.StatusCode || latestNormalEvent?.StatusCode || ""
+          ).toUpperCase();
 
     const latestNormalIndex =
       NORMAL_FLOW.findIndex(
@@ -367,24 +374,25 @@ const TrackingComponent = ({
 
     return NORMAL_FLOW.map((step, index) => {
       const matchingEvent =
-        eventsByCode.get(step.statusCode) || null;
-
-      const isDelivered =
-        step.statusCode === "DELIVERED" &&
-        reachedCodes.has("DELIVERED");
+        eventsByCode.get(step.statusCode) ||
+        (step.statusCode === "DELIVERED" && completedEvent) ||
+        null;
 
       const isCurrent =
         latestNormalIndex >= 0 &&
         index === latestNormalIndex &&
-        !isDelivered;
+        step.statusCode !== "DELIVERED";
 
       const isCompleted =
-        reachedCodes.has(step.statusCode) &&
-        (!isCurrent || isDelivered);
+        Boolean(matchingEvent) &&
+        latestNormalIndex >= 0 &&
+        index <= latestNormalIndex &&
+        !isCurrent;
 
       const isUpcoming =
         latestNormalIndex === -1 ||
-        index > latestNormalIndex;
+        index > latestNormalIndex ||
+        (index === latestNormalIndex && !isCurrent && !isCompleted);
 
       return {
         ...step,
@@ -394,7 +402,7 @@ const TrackingComponent = ({
         isUpcoming,
       };
     });
-  }, [orderedTimeline]);
+  }, [orderedTimeline, latestEvent, deliveredEvent, completedEvent]);
 
     const handleTrack = async (event) => {
     event.preventDefault();
