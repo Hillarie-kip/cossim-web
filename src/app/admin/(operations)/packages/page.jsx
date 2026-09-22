@@ -869,13 +869,13 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const statusID = Number(order.StatusID ?? order.OrderStatusID);
         if (!DASHBOARD_STAGE_STATUS_IDS[dashboardStage].includes(statusID)) return false;
       }
-      return !(isVendorOnly && vendorActionedOnly && !hasVendorAction(order));
+      return !(vendorActionedOnly && !hasVendorAction(order));
     }).sort((a, b) => {
         const slaDifference = getOrderSlaState(a).priority - getOrderSlaState(b).priority;
         return slaDifference || getOrderSlaTiming(b).elapsedMinutes - getOrderSlaTiming(a).elapsedMinutes
           || getOrderAgeDays(b.DateAdded) - getOrderAgeDays(a.DateAdded);
       }),
-    [shipmentOrderList, activeTask, dashboardStage, isVendorOnly, vendorActionedOnly]
+    [shipmentOrderList, activeTask, dashboardStage, vendorActionedOnly]
   );
   const taskPageLoading = isReceiveTask
     ? inboundBatchesLoading && inboundBatches.length === 0
@@ -3095,7 +3095,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               Stage: {DASHBOARD_STAGE_LABELS[dashboardStage]} <X size={14} />
             </button>
           )}
-          {isVendorOnly && (
+          {(isVendorOnly || roleCodes.has(RoleType.ADMIN)) && (
             <button type="button" className={`btn btn-sm ${vendorActionedOnly ? "btn-warning" : "btn-outline-warning"}`} aria-pressed={vendorActionedOnly} onClick={() => setVendorActionedOnly((value) => !value)}>
               <i className="feather-flag me-1" />Vendor actioned
             </button>
