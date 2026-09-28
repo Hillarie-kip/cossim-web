@@ -256,15 +256,6 @@ const TASK_TYPE_BY_STATUS_CODE = {
   SAME_DAY_CONSOLIDATED: "unassigned",
 };
 
-const getSlaWindowStart = (selectedStartDate, slaDays = 7) => {
-  const slaStart = new Date();
-  slaStart.setHours(0, 0, 0, 0);
-  slaStart.setDate(slaStart.getDate() - slaDays);
-  if (!selectedStartDate) return slaStart;
-  const selected = selectedStartDate instanceof Date ? selectedStartDate : new Date(selectedStartDate);
-  return Number.isNaN(selected.getTime()) || selected < slaStart ? slaStart : selected;
-};
-
 const getTaskType = (order) => {
   // The API commonly returns StatusCode as a numeric status ID. Prefer the
   // descriptive name so task routing does not try to classify values like 401.
@@ -698,7 +689,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         pageSize: 1000,
         search: searchTerm || undefined,
         DestinationDCCode: inboundDestinationScope,
-        startDate: formatLocalDateOnly(getSlaWindowStart(startDate)),
+        // Open batches stay listed until received, however old they are.
+        startDate: formatLocalDateOnly(startDate),
         endDate: formatLocalDateOnly(endDate),
         IsInBound: 1,
         // Only completed/active handovers can be received. Filtering this on
@@ -750,7 +742,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setOutboundBatchesLoading(true);
     try {
       const expectedBatchType = activeTask === "forwardReverse" ? "RETURN" : activeTask === "deliver" ? "REROUTE" : "ORDER";
-      const response = await getHandoverBatchList({ pageNo, pageSize: outboundBatchPageSize, search: debouncedOutboundBatchSearch || undefined, statusID: 2, batchType: expectedBatchType, FromDCCode: shipmentScopeDCCodes, IsInBound: 0, startDate: formatLocalDateOnly(getSlaWindowStart(startDate)), endDate: formatLocalDateOnly(endDate), orderBy: "DateAdded", sortDir: "DESC" });
+      const response = await getHandoverBatchList({ pageNo, pageSize: outboundBatchPageSize, search: debouncedOutboundBatchSearch || undefined, statusID: 2, batchType: expectedBatchType, FromDCCode: shipmentScopeDCCodes, IsInBound: 0, startDate: formatLocalDateOnly(startDate), endDate: formatLocalDateOnly(endDate), orderBy: "DateAdded", sortDir: "DESC" });
       const batches = extractResponseList(response).filter((batch) =>
         Number(batch.StatusID) === 2
         && String(batch.BatchType || "ORDER").toUpperCase() === expectedBatchType
@@ -3385,8 +3377,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     className="form-control"
                     value={outboundBatchSearch}
                     onChange={(event) => setOutboundBatchSearch(event.target.value)}
-                    placeholder="Shipment no. or destination"
-                    aria-label="Search batches by shipment number or destination"
+                    placeholder="Shipment no., order no. or destination"
+                    aria-label="Search batches by shipment number, order number or destination"
                   />
                   {outboundBatchSearch && <button type="button" className="btn btn-outline-secondary" onClick={() => setOutboundBatchSearch("")} aria-label="Clear batch search"><X size={14} /></button>}
                 </div>
