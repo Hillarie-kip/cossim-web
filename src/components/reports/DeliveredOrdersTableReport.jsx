@@ -149,9 +149,9 @@ export default function DeliveredOrdersTableReport({
     if (!confirmation.isConfirmed) return;
     try {
       const response = await updateShipmentStatusBatch({ orders: [{ orderNO: order.OrderNO, statusID: 302, dcCode: order.CurrentDCCode || order.OriginDCCode || "", notes: "Delivery reversed due to mistaken delivery" }] });
-      if (response?.Error) throw new Error(response.Message || "Failed to reverse delivery");
+      if (response?.Error) throw new Error(response.Data?.find((result) => result?.Error)?.Message || response.Message || "Failed to reverse delivery");
       notify.success("Delivery reversed successfully");
-      await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm });
+      await loadReport({ page: pagination.current, pageSize: pagination.pageSize, search: searchTerm, forceRefresh: true });
     } catch (error) { notify.error(error.message || "Failed to reverse delivery"); }
   };
 

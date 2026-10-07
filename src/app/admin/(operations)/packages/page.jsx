@@ -2183,6 +2183,32 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       : batch));
   }, [receiveItems, receiveItemsLoading, completedReceiveKeys]);
 
+  const loadReceiveBatchItems = async (batch) => {
+    const items = [];
+    const pageSize = 500;
+    let pageNo = 1;
+    while (true) {
+      const response = await fetchHandoverItems({
+        handoverCode: batch.HandoverCode,
+        pageNo,
+        pageSize,
+      });
+      const pageItems = extractResponseList(response);
+      items.push(...pageItems);
+      const totalCount = Number(response.TotalCount);
+      const totalPages = Number(response.TotalPages);
+      if (!pageItems.length
+        || (Number.isFinite(totalCount) && items.length >= totalCount)
+        || (Number.isFinite(totalPages) && pageNo >= totalPages)
+        || (!Number.isFinite(totalCount) && !Number.isFinite(totalPages) && pageItems.length < pageSize)) break;
+      pageNo += 1;
+    }
+    return items.map((item) => ({
+      ...item,
+      HandoverCode: item.HandoverCode || batch.HandoverCode,
+    }));
+  };
+
   const openReceivePanel = async (batch) => {
     setReceiveBatch(batch);
     setReceiveItems([]);
@@ -2192,14 +2218,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setReceiveScan("");
     setReceiveItemsLoading(true);
     try {
-      const response = await fetchHandoverItems({
-        handoverCode: batch.HandoverCode,
-        ToDCCode: batch.ToDCCode || undefined,
-      });
-      setReceiveItems(extractResponseList(response).map((item) => ({
-        ...item,
-        HandoverCode: item.HandoverCode || batch.HandoverCode,
-      })));
+      setReceiveItems(await loadReceiveBatchItems(batch));
     } catch (error) {
       notify.error(error.message || "Failed to load batch packages");
     } finally {
@@ -2222,16 +2241,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     setReceiveScan("");
     setReceiveItemsLoading(true);
     try {
-      const results = await Promise.all(selectedBatches.map(async (batch) => {
-        const response = await fetchHandoverItems({
-          handoverCode: batch.HandoverCode,
-          ToDCCode: batch.ToDCCode || undefined,
-        });
-        return extractResponseList(response).map((item) => ({
-          ...item,
-          HandoverCode: item.HandoverCode || batch.HandoverCode,
-        }));
-      }));
+      const results = await Promise.all(selectedBatches.map(loadReceiveBatchItems));
       setReceiveItems(results.flat());
     } catch (error) {
       notify.error(error.message || "Failed to load selected batch packages");

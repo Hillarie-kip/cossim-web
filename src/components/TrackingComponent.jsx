@@ -105,10 +105,8 @@ const TrackingComponent = ({
   const completedEvent = [...orderedTimeline].reverse().find(
     (event) => String(event.StatusCode || "").toUpperCase() === "ACCEPTED"
   );
-  const deliveredEvent = [...orderedTimeline].reverse().find(
-    (event) => String(event.StatusCode || "").toUpperCase() === "DELIVERED"
-  );
-  const latestEvent = completedEvent || deliveredEvent || mostRecentEvent;
+  // A later event can reopen a delivery recorded in error.
+  const latestEvent = mostRecentEvent;
 
   const orderNo =
     latestEvent?.OrderNO ||
@@ -363,7 +361,7 @@ const TrackingComponent = ({
       String(latestEvent?.StatusCode || "").toUpperCase() === "ACCEPTED"
         ? "DELIVERED"
         : String(
-            deliveredEvent?.StatusCode || latestNormalEvent?.StatusCode || ""
+            latestNormalEvent?.StatusCode || ""
           ).toUpperCase();
 
     const latestNormalIndex =
@@ -402,7 +400,7 @@ const TrackingComponent = ({
         isUpcoming,
       };
     });
-  }, [orderedTimeline, latestEvent, deliveredEvent, completedEvent]);
+  }, [orderedTimeline, latestEvent, completedEvent]);
 
     const handleTrack = async (event) => {
     event.preventDefault();
