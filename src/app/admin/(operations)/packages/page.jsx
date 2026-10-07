@@ -48,7 +48,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterDistributionCentersToAssigned } from "@/services/dcService";
 
 const isReceivedHandoverItem = (item) =>
-  [201, 402, 403, 703, 901, 902].includes(Number(item.OrderStatusID ?? item.StatusID))
+  item.IsPendingReceipt === false
+  || [201, 303, 402, 403, 703, 802, 901, 902, 903].includes(Number(item.OrderStatusID ?? item.StatusID))
   || /RECEIVED|RETURNED TO VENDOR/i.test(item.StatusName || "");
 
 const getStatusName = (status) =>
@@ -2965,7 +2966,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const sla = getOrderSlaState(order);
         const timing = getOrderSlaTiming(order);
         const maximum = getOrderSlaMaximum(order);
-        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{maximum || timing.difference}</strong></div><span>{maximum ? `${timing.difference} elapsed · ` : ""}Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
+        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><span className="text-muted small">Earliest package deadline · {order.OrderNO}</span><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{maximum || timing.difference}</strong></div><span>{maximum ? `${timing.difference} elapsed · ` : ""}Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
       },
     },
     {
@@ -3348,8 +3349,8 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                           return <label className={`list-group-item d-flex align-items-center justify-content-between gap-2 ${isResolved ? "bg-light" : ""}`} key={`${item.HandoverCode || "blind"}-${item.OrderNO}`}>
                             <span className="d-flex align-items-center gap-2">
                               <input type="checkbox" className="form-check-input m-0" checked={receivedOrderKeys.includes(item.OrderNO)} disabled={isResolved} onChange={(event) => setReceivedOrderKeys((current) => event.target.checked ? [...new Set([...current, item.OrderNO])] : current.filter((key) => key !== item.OrderNO))} />
-                              <strong>{item.OrderNO}</strong>
-                              {isReceived && <small className="text-success fw-semibold">Received</small>}
+                              <span><strong>{item.OrderNO}</strong>{item.SLA && <small className="d-block" style={{ color: getOrderSlaState(item.SLA).color }}>{getOrderSlaState(item.SLA).label} · {getOrderSlaTiming(item.SLA).difference} elapsed · Expected {getOrderSlaTiming(item.SLA).expected}</small>}</span>
+                              {isReceived && <small className="text-success fw-semibold">{item.IsCurrentAssignment === false ? "Moved to another batch" : "Received / resolved"}</small>}
                               {isLost && <small className="text-danger fw-semibold">Lost</small>}
                             </span>
                             {receiveBatch.IsMultiBatch && <small className="text-muted">{item.HandoverCode}</small>}
