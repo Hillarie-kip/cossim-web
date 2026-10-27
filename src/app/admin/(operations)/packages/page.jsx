@@ -40,6 +40,7 @@ import TableExportIcons from "@/components/TableExportIcons";
 import { createFetchAllDataFunction } from "@/utils/tableExport";
 import { Modal } from "react-bootstrap";
 import CreatePackageForm from "@/components/CreatePackageForm";
+import AdjustCODModal from "@/components/modals/AdjustCODModal";
 import { formatLocalDateOnly } from "@/lib/utils/dateFormat";
 import { prepareShipmentHistory } from "@/utils/shipmentHistory";
 import { exportColumns, pdfColumns } from "./components/tableColumns";
@@ -166,6 +167,7 @@ const getHistoryStatus = (event, dcOptions = [], order = null) => {
 const VENDOR_NOTE_PREFIX = "Vendor note:";
 const RETURN_NOTE_PREFIX = "Return note:";
 const RETURN_ATTEMPT_PREFIX = "Return attempt:";
+const MAX_PACKAGES_PER_BATCH = 100;
 // Status recorded when a vendor deletes an unconfirmed order.
 const VENDOR_DELETED_STATUS_ID = 0;
 const DASHBOARD_STAGE_STATUS_IDS = { "1st-attempt": [304], "2nd-attempt": [305], "3rd-attempt": [306] };
@@ -498,6 +500,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
   const isReceiveTask = !isVendorOnly && (activeTask === "receive" || activeTask === "reverseReceive");
   const [showDashboardBack, setShowDashboardBack] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
+  const [codAdjustmentOrder, setCODAdjustmentOrder] = useState(null);
+  const canAdjustCOD = (order) =>
+    (roleCodes.has(RoleType.ADMIN) || roleCodes.has(RoleType.FINANCE))
+    && [303, 802].includes(Number(order?.StatusID ?? order?.OrderStatusID))
+    && Boolean(order?.CashOnDeliveryRequired)
+    && !order?.IsSettled && !order?.PaidToVendor;
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [mobileConsolidatedOpen, setMobileConsolidatedOpen] = useState(false);
@@ -1211,6 +1219,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     const initialOrders = mode === "confirmed"
       ? [...restoredOrders, ...selectedOrdersForActions].filter((order, index, orders) => order?.OrderNO && orders.findIndex((item) => item?.OrderNO === order.OrderNO) === index)
       : selectedOrdersForActions;
+    if (initialOrders.length > MAX_PACKAGES_PER_BATCH) {
+      notify.error(`A batch can contain up to ${MAX_PACKAGES_PER_BATCH} packages. Select fewer packages to continue.`);
+      return;
+    }
     setBatchPanelMode(mode);
     setExistingBatchCode("");
     setExistingBatchEditOnly(false);
@@ -2735,6 +2747,12 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
               icon: "feather-edit",
               href: `${route.packages}/${record.OrderNO}/edit`,
             },
+            canAdjustCOD(record) && {
+              key: "adjust-cod",
+              label: "Edit COD",
+              icon: "feather-dollar-sign",
+              onClick: () => setCODAdjustmentOrder(record),
+            },
             {
               key: "print-sticker",
               label: isGenerating ? "Preparing..." : "Print Sticker",
@@ -3502,8 +3520,9 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     <button type="button" className={detailView === "general" ? "active" : ""} onClick={() => setDetailView("general")}><i className="feather-file-text" />Details</button>
                     <button type="button" className={detailView === "history" ? "active" : ""} onClick={() => setDetailView("history")}><i className="feather-clock" />History</button>
                     <button type="button" className={detailView === "items" ? "active" : ""} onClick={() => setDetailView("items")}><i className="feather-package" />Items</button>
-                    {activeTask === "confirmed" && selectedRowKeys.length > 0 && <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>}
+                    <button type="button" onClick={() => handleDownloadSticker(detailPanelOrder)} disabled={isGenerating}><i className="feather-download" />Sticker</button>
                     {roleCodes.has(RoleType.FINANCE) && canEditPackage(detailPanelOrder) && <Link to={`${route.packages}/${detailPanelOrder.OrderNO}/edit`}><i className="feather-edit" />Edit</Link>}
+                    {canAdjustCOD(detailPanelOrder) && <button type="button" onClick={() => setCODAdjustmentOrder(detailPanelOrder)}><i className="feather-dollar-sign" />Edit COD</button>}
                     {isVendorOnly && activeTask === "confirmed" && <button type="button" className="danger" onClick={() => handleDeletePackage(detailPanelOrder)}><i className="feather-trash-2" />Delete</button>}
                     {isVendorOnly && activeTask === "deliver" && <button type="button" onClick={() => handleAddVendorNote(detailPanelOrder)}><i className="feather-edit-3" />Add note</button>}
                   </div>
@@ -3590,6 +3609,18 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
       </div>
 
       {/* Import Excel Modal */}
+      {codAdjustmentOrder && <AdjustCODModal
+        key={codAdjustmentOrder.OrderNO}
+        order={codAdjustmentOrder}
+        onClose={() => setCODAdjustmentOrder(null)}
+        onSuccess={(amount) => {
+          setDetailOrder((current) => current?.OrderNO === codAdjustmentOrder.OrderNO
+            ? { ...current, CODAmount: amount, CashOnDeliveryAmount: amount, CashOnDeliveryRequired: amount > 0 }
+            : current);
+          setDetailRefreshKey((key) => key + 1);
+          handleRefresh();
+        }}
+      />}
       <ImportExcelModal
         show={showImportModal}
         showVendorInput={!isVendorOnly}

@@ -129,11 +129,9 @@ const SIZE_STYLES = {
     pad: '4px', gap: 2,
     // component sizes
     headerIcon: 9, rowIcon: 7, searchR: 22, footIcon: 9,
-    qrSize: '54px',
+    qrSize: '42px',
     // barcode
     bcWidth: 0.8, bcHeight: 36, bcFontSize: 7,
-    // items truncation (characters)
-    itemsMaxLen: 22,
     // section vertical margins
     rowMb: '2px', divMb: '2px',
     infoRowMb: '1px',
@@ -147,9 +145,8 @@ const SIZE_STYLES = {
     secHeader: '8px', label: '7.5px', content: '8px', foot: '8px',
     pad: '6px', gap: 3,
     headerIcon: 11, rowIcon: 8, searchR: 28, footIcon: 11,
-    qrSize: '72px',
+    qrSize: '54px',
     bcWidth: 1.2, bcHeight: 48, bcFontSize: 8,
-    itemsMaxLen: 32,
     rowMb: '3px', divMb: '3px',
     infoRowMb: '2px',
     detailPad: '5px',
@@ -162,9 +159,8 @@ const SIZE_STYLES = {
     secHeader: '10px', label: '9.5px', content: '10.5px', foot: '10px',
     pad: '10px', gap: 5,
     headerIcon: 15, rowIcon: 11, searchR: 40, footIcon: 14,
-    qrSize: '100px',
+    qrSize: '72px',
     bcWidth: 1.6, bcHeight: 72, bcFontSize: 10,
-    itemsMaxLen: 55,
     rowMb: '4px', divMb: '4px',
     infoRowMb: '2px',
     detailPad: '7px',
@@ -173,6 +169,21 @@ const SIZE_STYLES = {
   },
 };
 // ─────────────────────────────────────────────────────────────────────────────
+
+const parsePaymentDetails = (notes) => {
+  const text = String(notes || "");
+  const paybillMatch = /paybill/i.exec(text);
+  const accountMatch = /(?:account(?:\s*(?:number|no\.?))?|acc)\s*[:#-]?\s*/i.exec(text);
+  const amountMatch = /amount(?:\s+to\s+pay)?\s*[:#-]?\s*/i.exec(text);
+  if (!paybillMatch || !accountMatch || !amountMatch) return null;
+
+  const clean = (value) => value.replace(/^[\s,:#-]+|[\s,:;.-]+$/g, "").trim();
+  const paybill = clean(text.slice(paybillMatch.index + paybillMatch[0].length, accountMatch.index));
+  const account = clean(text.slice(accountMatch.index + accountMatch[0].length, amountMatch.index));
+  const amount = clean(text.slice(amountMatch.index + amountMatch[0].length));
+  if (!paybill || !account || !amount) return null;
+  return { paybill, account, amount };
+};
 
 const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated }, ref) => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = React.useState('');
@@ -215,21 +226,19 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
   const toName    = packageData.ReceiverContactName  || packageData.CustomerName || '-';
   const toCompany = packageData.ReceiverCompanyName  || '-';
   const toPhone   = packageData.ReceiverContactPhone || packageData.CustomerPhone || '-';
-  const toAddr    = [packageData.ReceiverStreetName, packageData.ReceiverArea, packageData.ReceiverCity].filter(Boolean).join(', ') || '-';
+  const toCity    = packageData.ReceiverCity || '-';
+  const toDestination = packageData.DestinationDCName || packageData.ToDCName || packageData.DestinationDCCode || '-';
+  const toAddr    = [packageData.ReceiverStreetName, packageData.ReceiverArea].filter(Boolean).join(', ') || '-';
 
   const orderNo      = packageData.OrderNO || '-';
   const deliveryType = (packageData.DeliveryType || 'Standard').toUpperCase();
   const dateAdded    = packageData.DateAdded ? packageData.DateAdded.split('T')[0] : '-';
-  const totalWeight  = packageData.ShipmentOrderItems?.reduce((s, i) => s + (i.weight || 0), 0) || 0;
+  const items = packageData.ShipmentOrderItems || packageData.shipmentOrderItems || [];
+  const totalWeight  = items.reduce((sum, item) => sum + Number(item.weight ?? item.Weight ?? 0), 0);
   const weightStr    = totalWeight > 0 ? `${totalWeight.toFixed(2)} KG` : '-';
 
-  // Items — truncate per size
-  const rawItems     = (packageData.ShipmentOrderItems || []).map(i => i.productName).filter(Boolean).join(', ');
-  const itemsStr     = rawItems.length > t.itemsMaxLen
-    ? rawItems.slice(0, t.itemsMaxLen).trimEnd() + '…'
-    : rawItems || '-';
-
   const notes        = packageData.Notes || '-';
+  const paymentDetails = parsePaymentDetails(packageData.Notes);
   const codValue = Number(packageData.CODAmount ?? packageData.CashOnDeliveryAmount ?? 0);
   const formatAmount = (value) => `KSH ${value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const codAmount = formatAmount(codValue);
@@ -252,7 +261,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '3px', marginBottom: t.infoRowMb, lineHeight: 1.2 }}>
       <div style={{ paddingTop: '1px', flexShrink: 0 }}><Ic size={t.rowIcon} /></div>
       <span style={{ fontSize: t.label, fontWeight: '700', color: '#333', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}: </span>
-      <span style={{ fontSize: t.content, color: '#111', wordBreak: 'break-word', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      <span style={{ fontSize: t.content, color: '#111', wordBreak: 'break-word', overflowWrap: 'anywhere', flex: 1, minWidth: 0 }}>{value}</span>
     </div>
   );
 
@@ -264,6 +273,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
   return (
     <div
       ref={ref}
+      data-package-sticker
       style={{
         width: t.width,
         height: t.height,
@@ -289,63 +299,73 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
         COSSIM LOGISTICS
       </div>
 
-      {/* ── 2. THANK YOU ── */}
-      <div style={{
-        padding: `3px ${t.pad} 2px`, textAlign: 'center',
-        borderBottom: '1px solid #EDEDED', flexShrink: 0,
-        backgroundColor: '#FFF9F6',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <span style={{ color: '#F26A26', fontSize: t.arrow, fontWeight: '900' }}>→</span>
-          <span style={{ fontSize: t.thanks, fontWeight: '900', color: '#1A1A1A', letterSpacing: '1px', lineHeight: 1.05 }}>COSSIM LIMITED</span>
-          <span style={{ color: '#F26A26', fontSize: t.arrow, fontWeight: '900' }}>←</span>
-        </div>
-        <div style={{ fontSize: t.subtitle, color: '#999', letterSpacing: '2px', marginTop: '1px', fontWeight: '600' }}>
-          — FOR CHOOSING US —
-        </div>
-      </div>
-
-      {/* ── 3. FROM / TO ── */}
+      {/* ── 2. FROM / TO ── */}
       <div style={{ display: 'flex', borderBottom: '1px solid #EDEDED', flexShrink: 0 }}>
         {/* FROM */}
-        <div style={{ flex: 1, borderRight: '1px solid #EDEDED' }}>
+        <div style={{ flex: 1, minWidth: 0, borderRight: '1px solid #EDEDED' }}>
           <OrangeBar Icon={SendIcon} text="FROM (SENDER)" />
           <div style={{ padding: `3px ${t.pad}`, backgroundColor: '#FFF9F6' }}>
-            <InfoRow Ic={UserIcon}     label="Name"    value={fromName} />
-            <InfoRow Ic={BuildingIcon} label="Company" value={fromCompany} />
+            <InfoRow Ic={UserIcon} label="Name" value={fromName} />
+            {fromCompany !== fromName && <InfoRow Ic={BuildingIcon} label="Company" value={fromCompany} />}
             <InfoRow Ic={PhoneIcon}    label="Phone"   value={fromPhone} />
             <InfoRow Ic={LocationIcon} label="Address" value={fromAddr} />
           </div>
         </div>
         {/* TO */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <OrangeBar Icon={MapPinIcon} text="TO (RECEIVER)" />
           <div style={{ padding: `3px ${t.pad}`, backgroundColor: '#FFF9F6' }}>
-            <InfoRow Ic={UserIcon}     label="Name"    value={toName} />
-            <InfoRow Ic={BuildingIcon} label="Company" value={toCompany} />
+            <InfoRow Ic={UserIcon} label="Name" value={toName} />
+            {toCompany !== toName && <InfoRow Ic={BuildingIcon} label="Company" value={toCompany} />}
             <InfoRow Ic={PhoneIcon}    label="Phone"   value={toPhone} />
+            <InfoRow Ic={LocationIcon} label="City" value={toCity} />
+            <InfoRow Ic={MapPinIcon} label="Destination" value={toDestination} />
             <InfoRow Ic={LocationIcon} label="Address" value={toAddr} />
           </div>
         </div>
       </div>
 
-      {/* ── 4. SHIPMENT DETAILS ── */}
+      {/* ── 3. SHIPMENT DETAILS ── */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #EDEDED' }}>
         <OrangeBar Icon={PackageIcon} text="SHIPMENT DETAILS" />
         <div style={{ padding: `${t.detailPad} ${t.pad}`, backgroundColor: '#FFF9F6' }}>
 
           {/* Order No — full width */}
-          <div style={{ marginBottom: t.rowMb, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ marginBottom: t.rowMb, overflowWrap: 'anywhere' }}>
             <span style={{ fontSize: t.label, color: '#555', fontWeight: '700' }}>Order No:  </span>
             <span style={{ fontSize: t.content, color: '#111', fontWeight: '800' }}>{orderNo}</span>
           </div>
 
           <Dash mt="0" mb={t.divMb} />
 
-          {/* Items — full width, truncated */}
-          <div style={{ marginBottom: t.rowMb, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ fontSize: t.label, color: '#555', fontWeight: '700' }}>Items:  </span>
-            <span style={{ fontSize: t.content, color: '#111' }}>{itemsStr}</span>
+          <div style={{ marginBottom: t.rowMb }}>
+            <div style={{ fontSize: t.label, color: '#555', fontWeight: '700', marginBottom: '1px' }}>ITEMS</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: t.content, color: '#111' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #999', padding: '2px 3px', width: '78%' }}>Product</th>
+                  <th style={{ textAlign: 'right', borderBottom: '1px solid #999', padding: '2px 3px' }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length > 0 ? items.map((item, index) => {
+                  const productName = item.productName || item.ProductName || item.itemCode || item.ItemCode || item.description || item.Description || `Item ${index + 1}`;
+                  const description = item.description || item.Description;
+                  const quantity = item.quantity ?? item.Quantity ?? 1;
+                  return (
+                    <tr key={item.id || item.ID || index}>
+                      <td style={{ borderBottom: '1px solid #DDD', padding: '1px 3px', verticalAlign: 'top', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                        <span style={{ display: 'block', maxWidth: '100%', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{productName}</span>
+                        {description && description !== productName && <span style={{ display: 'block', maxWidth: '100%', fontSize: t.label, color: '#555', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{description}</span>}
+                      </td>
+                      <td style={{ borderBottom: '1px solid #DDD', padding: '1px 3px', textAlign: 'right', verticalAlign: 'top', overflowWrap: 'anywhere' }}>{quantity}</td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan="2" style={{ padding: '2px 3px' }}>No item details available</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           <Dash mt="0" mb={t.divMb} />
@@ -386,16 +406,31 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
         </div>
       </div>
 
-      {/* ── 5. NOTES ── */}
-      <div style={{ flex: 1, borderBottom: '1px solid #EDEDED', backgroundColor: '#FFF9F6' }}>
-        <div style={{ padding: `4px ${t.pad}` }}>
-          <span style={{ fontSize: t.label, color: '#555', fontWeight: '700' }}>Notes: </span>
-          <span style={{ fontSize: t.content, color: '#111', wordBreak: 'break-word' }}>{notes}</span>
-        </div>
+      {/* ── 4. NOTES ── */}
+      <div style={{ flex: 1, minHeight: 0, borderBottom: '1px solid #EDEDED', backgroundColor: '#FFF9F6', overflowWrap: 'anywhere' }}>
+        {paymentDetails ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '0.85fr 1.15fr 1fr', margin: `${t.rowMb} ${t.pad}` }}>
+            {[
+              ['Paybill', paymentDetails.paybill],
+              ['Account', paymentDetails.account],
+              ['Amount to pay', paymentDetails.amount],
+            ].map(([label, value], index) => (
+              <div key={label} style={{ minWidth: 0, border: '1px solid #777', borderRight: index < 2 ? '0' : '1px solid #777', padding: '3px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <strong style={{ fontSize: t.label, color: '#555', overflowWrap: 'anywhere' }}>{label}</strong>
+                <span style={{ fontSize: t.content, color: '#111', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: `4px ${t.pad}` }}>
+            <span style={{ fontSize: t.label, color: '#555', fontWeight: '700' }}>Notes: </span>
+            <span style={{ fontSize: t.content, color: '#111', wordBreak: 'break-word' }}>{notes}</span>
+          </div>
+        )}
       </div>
 
       {/* ── bottom zone: content anchored to bottom ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', flexShrink: 1 }}>
 
         {/* ── 5. TRACK YOUR ORDER ── */}
         <div style={{
@@ -419,9 +454,6 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
             <div style={{ fontSize: t.secHeader, fontWeight: '800', color: '#F26A26', textTransform: 'uppercase', marginBottom: '1px' }}>
               TRACK YOUR ORDER
             </div>
-            <div style={{ fontSize: t.label, color: '#666', lineHeight: 1.3 }}>
-              Scan QR code or visit our website to track your package.
-            </div>
           </div>
           {/* QR Code */}
           {qrCodeDataUrl && (
@@ -431,7 +463,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
           )}
         </div>
 
-        {/* ── 6. BARCODE ── */}
+        {/* ── 5. BARCODE ── */}
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: `${t.barcodePad} ${t.pad}`, /* added horizontal padding */
@@ -459,7 +491,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
         </div>
       </div>
 
-      {/* ── 7. FOOTER ── */}
+      {/* ── 6. FOOTER ── */}
       <div style={{
         backgroundColor: '#F26A26', color: '#FFF',
         padding: `3px ${t.pad}`,

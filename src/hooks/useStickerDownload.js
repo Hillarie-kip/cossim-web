@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
 import notify from '@/lib/toast';
+import { getShipmentOrderItems } from '@/services/shipmentService';
 
 const makeStickerPrintSafe = (clonedDocument) => {
   const sticker = clonedDocument.querySelector('[data-package-sticker]') || clonedDocument.body.firstElementChild?.firstElementChild;
@@ -24,6 +25,13 @@ const makeStickerPrintSafe = (clonedDocument) => {
     if (computed.borderBottomStyle !== 'none') element.style.borderBottomColor = '#000000';
     if (computed.borderLeftStyle !== 'none') element.style.borderLeftColor = '#000000';
   });
+};
+
+const getOrderItems = (response) => {
+  if (response?.Error) throw new Error(response.Message || 'Could not load package items.');
+  const data = response?.Data ?? response?.data ?? response;
+  if (Array.isArray(data)) return data;
+  return data?.items ?? data?.Items ?? [];
 };
 
 const useStickerDownload = () => {
@@ -53,6 +61,55 @@ const useStickerDownload = () => {
       name: '4" x 6"',     // Standard shipping label
       displayWidth: 480,
       displayHeight: 720
+    }
+  };
+
+  const getPackageWithItems = async (packageData) => {
+    const embeddedItems = packageData.ShipmentOrderItems || packageData.shipmentOrderItems;
+    if (Array.isArray(embeddedItems) && embeddedItems.length > 0) return packageData;
+
+    const items = getOrderItems(await getShipmentOrderItems({ orderNO: packageData.OrderNO }));
+    return { ...packageData, ShipmentOrderItems: items };
+  };
+
+  const renderStickerCanvas = async (packageData, size) => {
+    const React = (await import('react')).default;
+    const ReactDOM = (await import('react-dom/client')).default;
+    const PackageSticker = (await import('@/components/PackageSticker')).default;
+    const tempContainer = document.createElement('div');
+    tempContainer.style.position = 'absolute';
+    tempContainer.style.left = '-9999px';
+    tempContainer.style.top = '0';
+    document.body.appendChild(tempContainer);
+    const root = ReactDOM.createRoot(tempContainer);
+
+    try {
+      await new Promise((resolve) => {
+        root.render(
+          React.createElement(PackageSticker, {
+            packageData,
+            size,
+            onQRGenerated: resolve
+          })
+        );
+      });
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const stickerElement = tempContainer.querySelector('[data-package-sticker]') || tempContainer.firstElementChild;
+      if (!stickerElement) throw new Error('Sticker element not found');
+
+      return await html2canvas(stickerElement, {
+        backgroundColor: '#FFFFFF',
+        scale: 4,
+        useCORS: true,
+        allowTaint: true,
+        onclone: makeStickerPrintSafe,
+        width: sizeConfigs[size].displayWidth,
+        height: Math.ceil(Math.max(sizeConfigs[size].displayHeight, stickerElement.scrollHeight)),
+      });
+    } finally {
+      root.unmount();
+      tempContainer.remove();
     }
   };
 
@@ -141,55 +198,8 @@ const useStickerDownload = () => {
         }
       });
 
-      // Create a temporary container for the sticker
-      const tempContainer = document.createElement('div');
-      tempContainer.style.position = 'absolute';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.top = '-9999px';
-      document.body.appendChild(tempContainer);
-
-      // Dynamically import React and render the sticker
-      const React = (await import('react')).default;
-      const ReactDOM = (await import('react-dom/client')).default;
-      const PackageSticker = (await import('@/components/PackageSticker')).default;
-
-      // Create root and render sticker
-      const root = ReactDOM.createRoot(tempContainer);
-
-      await new Promise((resolve) => {
-        root.render(
-          React.createElement(PackageSticker, {
-            packageData,
-            size,
-            ref: stickerRef,
-            onQRGenerated: resolve
-          })
-        );
-      });
-
-      // Wait a bit for rendering
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const stickerElement = tempContainer.querySelector('[data-package-sticker]') || tempContainer.firstElementChild;
-
-      if (!stickerElement) {
-        throw new Error('Sticker element not found');
-      }
-
-      // Generate canvas from HTML
-      const canvas = await html2canvas(stickerElement, {
-        backgroundColor: '#FFFFFF',
-        scale: 4, // Higher quality for printing
-        useCORS: true,
-        allowTaint: true,
-        onclone: makeStickerPrintSafe,
-        width: sizeConfigs[size].displayWidth,
-        height: sizeConfigs[size].displayHeight
-      });
-
-      // Clean up temporary container
-      root.unmount();
-      document.body.removeChild(tempContainer);
+      const printablePackage = await getPackageWithItems(packageData);
+      const canvas = await renderStickerCanvas(printablePackage, size);
 
       // Create PDF from canvas
       const pageWidth = sizeConfigs[size].width * 72;
@@ -235,8 +245,7 @@ const useStickerDownload = () => {
 
     } catch (error) {
       console.error('Error generating sticker:', error);
-
-      notify.error('Failed to generate sticker. Please try again.');
+      notify.error(error?.message || 'Failed to generate sticker. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -325,62 +334,25 @@ const useStickerDownload = () => {
         }
       });
 
-      const React = (await import('react')).default;
-      const ReactDOM = (await import('react-dom/client')).default;
-      const PackageSticker = (await import('@/components/PackageSticker')).default;
-
       const pageWidth = sizeConfigs[size].width * 72;
-      const pageHeight = sizeConfigs[size].height * 72;
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: [pageWidth, pageHeight]
-      });
+      let pdf;
 
       for (let i = 0; i < packagesData.length; i++) {
-        const packageData = packagesData[i];
+        const packageData = await getPackageWithItems(packagesData[i]);
 
         // Update progress text
         const progressEl = document.getElementById('bulk-progress');
         if (progressEl) progressEl.innerText = `${i + 1} / ${packagesData.length}`;
 
-        const tempContainer = document.createElement('div');
-        tempContainer.style.position = 'absolute';
-        tempContainer.style.left = '-9999px';
-        tempContainer.style.top = '-9999px';
-        document.body.appendChild(tempContainer);
-
-        const root = ReactDOM.createRoot(tempContainer);
-
-        await new Promise((resolve) => {
-          root.render(
-            React.createElement(PackageSticker, {
-              packageData,
-              size,
-              onQRGenerated: resolve
-            })
-          );
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const stickerElement = tempContainer.querySelector('[data-package-sticker]') || tempContainer.firstElementChild;
-        if (!stickerElement) throw new Error('Sticker element not found');
-
-        const canvas = await html2canvas(stickerElement, {
-          backgroundColor: '#FFFFFF',
-          scale: 4,
-          useCORS: true,
-          allowTaint: true,
-          onclone: makeStickerPrintSafe,
-          width: sizeConfigs[size].displayWidth,
-          height: sizeConfigs[size].displayHeight
-        });
-
-        root.unmount();
-        document.body.removeChild(tempContainer);
-
-        if (i > 0) {
+        const canvas = await renderStickerCanvas(packageData, size);
+        const pageHeight = sizeConfigs[size].height * 72;
+        if (!pdf) {
+          pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: [pageWidth, pageHeight]
+          });
+        } else {
           pdf.addPage([pageWidth, pageHeight], 'portrait');
         }
 
@@ -414,7 +386,7 @@ const useStickerDownload = () => {
 
     } catch (error) {
       console.error('Error generating bulk stickers:', error);
-      notify.error('Failed to generate bulk stickers. Please try again.');
+      notify.error(error?.message || 'Failed to generate bulk stickers. Please try again.');
     } finally {
       setIsGenerating(false);
     }
