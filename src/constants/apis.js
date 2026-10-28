@@ -54,6 +54,7 @@ const apiRoutes = {
   },
 
   analytics: {
+    dcAR: `${API_BASE}/api/Analytics/GetDCARReport`,
     shipmentOrders: `${API_BASE}/api/Analytics/GetShipmentOrderAnalytics`,
     shipmentTracking: `${API_BASE}/api/Analytics/GetShipmentTrackingAnalytics`,
   },

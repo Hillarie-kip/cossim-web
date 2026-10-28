@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Datatable from "@/core/pagination/datatable";
 import TableExportIcons from "@/components/TableExportIcons";
 import OrderExpandedDetails from "@/components/OrderExpandedDetails";
@@ -49,6 +49,7 @@ export default function DeliveredOrdersTableReport({
 } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const reportRequest = useRef(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [returnStatusFilter, setReturnStatusFilter] = useState("all");
   const [dateFilterType, setDateFilterType] = useState(taskType === "completed" ? "paymentDate" : "orderDate"); // "orderDate" or "paymentDate"
@@ -72,6 +73,7 @@ export default function DeliveredOrdersTableReport({
     forceRefresh = false,
   } = {}) => {
     if ((isConsolidated || taskType === "lost") && isVendorOnly) { setRows([]); return; }
+    const requestID = ++reportRequest.current;
     const normalizedSearch = search.trim();
     setLoading(true);
     try {
@@ -90,7 +92,7 @@ export default function DeliveredOrdersTableReport({
           backgroundRefresh: false,
         })
         : await getShipmentOrders(dateOnly ? {
-          pageNo: page,
+          pageNo: dateOnly ? 1 : page,
           pageSize,
           checkSLA: false,
           searchTerm: normalizedSearch || undefined,
@@ -121,15 +123,48 @@ export default function DeliveredOrdersTableReport({
           backgroundRefresh: false,
         });
       const responseRows = Array.isArray(response?.Data) ? response.Data : [];
+      if (dateOnly) {
+        // The API limits each request to 1,000 orders. Fetch subsequent pages
+        // so the All Orders view includes the complete selected period.
+        const allRows = [...responseRows];
+        const batchSize = Number(response?.PageSize || pageSize);
+        let batch = responseRows;
+        let nextPage = 2;
+        const total = Number(response?.TotalCount || 0);
+        while (batch.length && (allRows.length < total || batch.length === batchSize)) {
+          if (requestID !== reportRequest.current) return;
+          const nextResponse = await getShipmentOrders({
+            pageNo: nextPage++,
+            pageSize: batchSize,
+            checkSLA: false,
+            searchTerm: normalizedSearch || undefined,
+            vendorCode: isVendorOnly ? assignedVendorCode || undefined : navigationFilters.vendorCode || undefined,
+            toDCCode: navigationFilters.dcCodes || navigationFilters.dcCode || undefined,
+            startDate: navigationFilters.startDate || undefined,
+            endDate: navigationFilters.endDate || undefined,
+            forceRefresh,
+            backgroundRefresh: false,
+          });
+          batch = Array.isArray(nextResponse?.Data) ? nextResponse.Data : [];
+          allRows.push(...batch);
+        }
+        if (requestID !== reportRequest.current) return;
+        const orders = uniqueShipmentOrders(allRows);
+        setRows(orders);
+        setPagination({ current: 1, pageSize: batchSize, total: orders.length });
+        return;
+      }
+      if (requestID !== reportRequest.current) return;
       setRows(isConsolidated
         ? responseRows.filter((row) => [1, 3].includes(Number(row.StatusID)))
         : uniqueShipmentOrders(responseRows));
       setPagination({ current: Number(response?.PageNO || page), pageSize: Number(response?.PageSize || pageSize), total: Number(response?.TotalCount || 0) });
     } catch (error) {
+      if (requestID !== reportRequest.current) return;
       setRows([]);
       notify.error(error.message || `Failed to load ${isConsolidated ? "consolidated batches" : "orders"}`);
     } finally {
-      setLoading(false);
+      if (requestID === reportRequest.current) setLoading(false);
     }
   };
 
@@ -360,6 +395,7 @@ export default function DeliveredOrdersTableReport({
           {returnActions && <div className="col-lg-2"><label className="form-label">Status</label><select className="form-select" value={returnStatusFilter} onChange={(event) => setReturnStatusFilter(event.target.value)}><option value="pending">Pending</option><option value="all">All</option><option value="accepted">Accepted</option><option value="declined">Declined</option></select></div>}
           <div className={returnActions ? "col-lg-2" : taskType === "completed" ? "col-lg-4" : "col-lg-3"} style={{ display: "flex", gap: "0.5rem" }}><button className="btn btn-primary flex-fill" onClick={() => loadReport({ page: 1, search: searchTerm })}>Search</button><button className="btn btn-outline-secondary" onClick={() => { setSearchTerm(""); loadReport({ page: 1, search: "" }); }}>Reset</button></div>
         </div>
+        {dateOnly && <p className="text-muted" role="status">{loading ? "Loading all matching orders…" : `${rows.length.toLocaleString("en-KE")} orders`}</p>}
         <Datatable
           className="table"
           columns={columns}
@@ -381,7 +417,7 @@ export default function DeliveredOrdersTableReport({
           scroll={{ x: isConsolidated ? 1950 : 1450 }}
           emptyTitle={emptyTitle}
           emptyDescription={`No ${isConsolidated ? "handover batches" : "orders"} match the selected filters.`}
-          pagination={{
+          pagination={dateOnly ? false : {
             current: pagination.current,
             pageSize: pagination.pageSize,
             total: pagination.total,

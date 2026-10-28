@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { createStickerPdf, appendStickerCanvas } from '@/utils/stickerPdf';
 import withReactContent from 'sweetalert2-react-content';
 import Swal from 'sweetalert2';
 import notify from '@/lib/toast';
@@ -204,14 +204,8 @@ const useStickerDownload = () => {
       // Create PDF from canvas
       const pageWidth = sizeConfigs[size].width * 72;
       const pageHeight = sizeConfigs[size].height * 72;
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: [pageWidth, pageHeight]
-      });
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
+      const pdf = createStickerPdf(pageWidth, pageHeight);
+      appendStickerCanvas(pdf, canvas, pageWidth, pageHeight);
 
       // Generate PDF blob
       const pdfBlob = pdf.output('blob');
@@ -247,6 +241,7 @@ const useStickerDownload = () => {
       console.error('Error generating sticker:', error);
       notify.error(error?.message || 'Failed to generate sticker. Please try again.');
     } finally {
+      MySwal.close();
       setIsGenerating(false);
     }
   };
@@ -309,6 +304,10 @@ const useStickerDownload = () => {
   };
 
   const generateBulkStickers = async (packagesData, size) => {
+    if (!packagesData?.length) {
+      notify.error('Select at least one order to print.');
+      return;
+    }
     setIsGenerating(true);
 
     try {
@@ -347,17 +346,12 @@ const useStickerDownload = () => {
         const canvas = await renderStickerCanvas(packageData, size);
         const pageHeight = sizeConfigs[size].height * 72;
         if (!pdf) {
-          pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'pt',
-            format: [pageWidth, pageHeight]
-          });
+          pdf = createStickerPdf(pageWidth, pageHeight);
         } else {
           pdf.addPage([pageWidth, pageHeight], 'portrait');
         }
 
-        const imgData = canvas.toDataURL('image/png', 1.0);
-        pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
+        appendStickerCanvas(pdf, canvas, pageWidth, pageHeight);
       }
 
       const pdfBlob = pdf.output('blob');
@@ -388,6 +382,7 @@ const useStickerDownload = () => {
       console.error('Error generating bulk stickers:', error);
       notify.error(error?.message || 'Failed to generate bulk stickers. Please try again.');
     } finally {
+      MySwal.close();
       setIsGenerating(false);
     }
   };

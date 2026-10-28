@@ -55,6 +55,7 @@ export const all_routes = {
   salesAgents: "/admin/sales-agents",
   reports: "/admin/reports/shipment-orders",
   shipmentOrderReport: "/admin/reports/shipment-orders",
+  dcARReport: "/admin/reports/dc-ar",
   deliveredOrdersReport: "/admin/reports/delivered-orders",
   vendorReceivedOrdersReport: "/admin/reports/vendor-received-orders",
   returnedOrdersReport: "/admin/reports/returned-orders",

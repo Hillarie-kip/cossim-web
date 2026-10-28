@@ -3582,6 +3582,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                                   <strong>{getHistoryStatus(event, dcOptions, detailPanelOrder)}</strong>
                                   <div className="packages-detail-history-details">
                                     <span>Actioned by: {event.ActorName || event.ActionedBy || event.CreatedBy || event.UpdatedBy || "-"}</span>
+                                    {(event.ActorPhoneNumber || event.actorPhoneNumber) && <span>Phone: <a href={`tel:${event.ActorPhoneNumber || event.actorPhoneNumber}`}>{event.ActorPhoneNumber || event.actorPhoneNumber}</a></span>}
                                     {(isHistoryAttempt(event) || isVendorNote(event)) && <span>Notes: {getUserHistoryNotes(event)}</span>}
                                   </div>
                                 </div>

@@ -41,6 +41,7 @@ export const AnalyticsReportHeader = ({
         className="analytics-report-switcher"
         aria-label="Analytics reports"
       >
+        {reportBasePath === "/admin/reports" && <Link to={`${reportBasePath}/dc-ar`} className={activeReport === "dc-ar" ? "active" : ""}>CS API</Link>}
         <Link
           to={`${reportBasePath}/shipment-orders`}
           className={

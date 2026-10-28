@@ -53,8 +53,14 @@ export const getShipmentTrackingAnalytics = async (params = {}) => {
 };
 
 const analyticsService = {
+  getDCARReport,
   getShipmentOrderAnalytics,
   getShipmentTrackingAnalytics,
 };
 
 export default analyticsService;
+
+export async function getDCARReport(params = {}) {
+  const response = await api.get(buildAnalyticsUrl(apiRoutes.analytics.dcAR, params));
+  return unwrapAnalyticsResponse(response.data, "Failed to retrieve the DC AR report.");
+}

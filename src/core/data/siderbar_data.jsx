@@ -63,6 +63,7 @@ export const SidebarData = [
     submenuOpen: true,
     submenuHdr: "Reports",
     submenuItems: [
+      { label: "CS API", icon: <Icon.BarChart2 />, link: "/admin/reports/dc-ar", submenu: false, description: "DC delivery and cash reconciliation" },
       {
         label: "Orders",
         icon: <Icon.Package />,

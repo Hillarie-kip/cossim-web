@@ -23,9 +23,11 @@ const Sidebar = () => {
         .map((section) => section.label === "Operations"
           ? { ...section, submenuItems: section.submenuItems.filter((item) => item.label === "Task Management") }
           : section.label === "Reports"
-            ? { ...section, submenuItems: section.submenuItems.filter((item) => !["/admin/reports/consolidated-orders", "/admin/reports/lost-items"].includes(item.link)) }
+            ? { ...section, submenuItems: section.submenuItems.filter((item) => !["/admin/reports/consolidated-orders", "/admin/reports/lost-items", "/admin/reports/dc-ar"].includes(item.link)) }
             : section)
-    : SidebarData;
+    : SidebarData.map(section => section.label === "Reports"
+      ? { ...section, submenuItems: section.submenuItems.filter(item => item.link !== "/admin/reports/dc-ar" || [RoleType.ADMIN, RoleType.FINANCE, RoleType.SALES_MANAGER, RoleType.DC_OPERATOR].some(role => roleCodes.has(role))) }
+      : section);
 
   const closeMobileSidebar = () => {
     if (window.innerWidth <= 991) {

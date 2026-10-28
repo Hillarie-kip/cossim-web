@@ -14,8 +14,9 @@ const firstValue = (item, keys) => {
   return "";
 };
 
-export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
+export const useAnalyticsFilterOptions = ({ includeUsers = false, includeAllDCs = false } = {}) => {
   const { user } = useAuth();
+  const canViewAllDCs = includeAllDCs && (user?.AssignedRoles || []).some(role => ["R-001", "R-002", "R-003"].includes(role.RoleTypeCode));
   const { vendors, loading: vendorsLoading } = useVendors({
     pageNo: 1,
     pageSize: 500,
@@ -63,7 +64,7 @@ export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
 
   const dcOptions = useMemo(
     () =>
-      filterDistributionCentersToAssigned(user, distributionCenters)
+      (canViewAllDCs ? (distributionCenters || []) : filterDistributionCentersToAssigned(user, distributionCenters))
         .map((dc) => {
           const code = firstValue(dc, ["DCCode", "dcCode"]);
           const name = firstValue(dc, ["DCName", "dcName", "Name", "name"]);
@@ -72,7 +73,7 @@ export const useAnalyticsFilterOptions = ({ includeUsers = false } = {}) => {
             : null;
         })
         .filter(Boolean),
-    [distributionCenters, user]
+    [distributionCenters, user, canViewAllDCs]
   );
 
   const deliveryTypeOptions = useMemo(
