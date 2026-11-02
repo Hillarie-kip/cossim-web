@@ -10,6 +10,7 @@ import {
   Layers,
   Search,
   ArrowLeft,
+  Trash2,
   X,
 } from "feather-icons-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1412,19 +1413,19 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
     }
   };
 
-  const handleExistingBatchCancel = async () => {
+  const handleExistingBatchCancel = async (handoverCode = existingBatchCode) => {
     const { isConfirmed } = await MySwal.fire({
-      title: "Cancel consolidated batch?",
-      text: "All packages in this batch will be released back to pending dispatch.",
+      title: `Delete batch ${handoverCode}?`,
+      text: "All packages in this batch will be released back to the status they had before batching.",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Cancel Batch",
+      confirmButtonText: "Delete Batch",
       confirmButtonColor: "#dc3545",
     });
     if (!isConfirmed) return;
     setBatchSubmitting(true);
     try {
-      const response = await editHandoverBatch({ handoverCode: existingBatchCode, cancelBatch: true });
+      const response = await editHandoverBatch({ handoverCode, cancelBatch: true });
       if (response?.Error) throw new Error(response.Message || "Failed to cancel batch");
       notify.success(response?.Message || "Batch cancelled and packages released");
       setExistingBatchCode("");
@@ -3425,7 +3426,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                           <small className="text-muted d-block"><span className="fw-semibold">Destination DC: </span>{batch.ToDCName || batch.DestinationDCName || batch.ToDCCode || batch.DestinationDCCode || "Unknown"}</small>
                           <small className="text-muted d-block">{formatPackageDate(batch.DateAdded)?.toLocaleString("en-GB") || "-"}</small>
                         </div>
-                        <div className="d-flex gap-1 flex-shrink-0"><button type="button" className="btn btn-outline-primary btn-sm" onClick={() => openExistingBatchCompletion(batch, true)}>Edit</button><button type="button" className="btn btn-primary btn-sm" onClick={() => openExistingBatchCompletion(batch)}>Complete</button></div>
+                        <div className="d-flex gap-1 flex-shrink-0"><button type="button" className="btn btn-outline-danger btn-sm" title="Delete batch and release packages" aria-label={`Delete batch ${batch.HandoverCode}`} disabled={batchSubmitting} onClick={() => handleExistingBatchCancel(batch.HandoverCode)}><Trash2 size={14} /></button><button type="button" className="btn btn-outline-primary btn-sm" onClick={() => openExistingBatchCompletion(batch, true)}>Edit</button><button type="button" className="btn btn-primary btn-sm" onClick={() => openExistingBatchCompletion(batch)}>Complete</button></div>
                       </div>
                     </div>)}
                   </div>
@@ -3494,7 +3495,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
                     </div>
                     <div className="d-flex gap-2 mb-3">
                       <button type="button" className="btn btn-outline-primary flex-fill" disabled={batchSubmitting || !batchPanelOrders.length} onClick={handleExistingBatchEdit}>Save Package Changes</button>
-                      <button type="button" className="btn btn-outline-danger flex-fill" disabled={batchSubmitting} onClick={handleExistingBatchCancel}>Cancel Entire Batch</button>
+                      <button type="button" className="btn btn-outline-danger flex-fill" disabled={batchSubmitting} onClick={() => handleExistingBatchCancel()}>Cancel Entire Batch</button>
                     </div>
                   </>}
                   {!existingBatchEditOnly && <>
