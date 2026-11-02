@@ -2980,6 +2980,10 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
             value={`Origin: ${record.FromDCName || record.OriginDCName || "Unknown"}`}
             className="text-muted small"
           />
+          <TruncatedText
+            value={`Created by: ${record.CreatedByName || record.CreatedBy || "Unknown"}`}
+            className="text-muted small"
+          />
         </div>
       ),
     },
@@ -2993,8 +2997,7 @@ const PackagesList = ({ initialStatusName = "", initialTask = "deliver" }) => {
         const date = formatPackageDate(order.DateAdded);
         const sla = getOrderSlaState(order);
         const timing = getOrderSlaTiming(order);
-        const maximum = getOrderSlaMaximum(order);
-        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><span className="text-muted small">Earliest package deadline · {order.OrderNO}</span><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{maximum || timing.difference}</strong></div><span>{maximum ? `${timing.difference} elapsed · ` : ""}Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
+        return <div className="packages-sla-date-cell" title={`Based on ${order.OrderNO}`}><span className="text-muted small">Earliest package deadline · {order.OrderNO}</span><div className="packages-sla-value" style={{ color: sla.color }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: sla.color }} /><strong>{timing.difference}</strong></div><span>Expected {timing.expected}</span><span>{date ? date.toLocaleString("en-GB") : "-"}</span></div>;
       },
     },
     {

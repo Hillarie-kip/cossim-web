@@ -226,8 +226,7 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
   const toName    = packageData.ReceiverContactName  || packageData.CustomerName || '-';
   const toCompany = packageData.ReceiverCompanyName  || '-';
   const toPhone   = packageData.ReceiverContactPhone || packageData.CustomerPhone || '-';
-  const toCity    = packageData.ReceiverCity || '-';
-  const toDestination = packageData.DestinationDCName || packageData.ToDCName || packageData.DestinationDCCode || '-';
+  const toDestination = packageData.ReceiverCity || '-';
   const toAddr    = [packageData.ReceiverStreetName, packageData.ReceiverArea].filter(Boolean).join(', ') || '-';
 
   const orderNo      = packageData.OrderNO || '-';
@@ -318,7 +317,6 @@ const PackageSticker = forwardRef(({ packageData, size = 'medium', onQRGenerated
             <InfoRow Ic={UserIcon} label="Name" value={toName} />
             {toCompany !== toName && <InfoRow Ic={BuildingIcon} label="Company" value={toCompany} />}
             <InfoRow Ic={PhoneIcon}    label="Phone"   value={toPhone} />
-            <InfoRow Ic={LocationIcon} label="City" value={toCity} />
             <InfoRow Ic={MapPinIcon} label="Destination" value={toDestination} />
             <InfoRow Ic={LocationIcon} label="Address" value={toAddr} />
           </div>
