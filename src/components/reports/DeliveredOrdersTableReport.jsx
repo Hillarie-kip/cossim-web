@@ -52,7 +52,7 @@ export default function DeliveredOrdersTableReport({
   const reportRequest = useRef(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [returnStatusFilter, setReturnStatusFilter] = useState("all");
-  const [dateFilterType, setDateFilterType] = useState(taskType === "completed" ? "paymentDate" : "orderDate"); // "orderDate" or "paymentDate"
+  const [dateFilterType, setDateFilterType] = useState("orderDate"); // Match the KPI/order-list date scope by default.
   const [pagination, setPagination] = useState({ current: 1, pageSize: 1000, total: 0 });
   const { filters: navigationFilters } = useGlobalFilters();
   const { user } = useAuth();

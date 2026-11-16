@@ -17,6 +17,12 @@ function load(file, dependencies = {}) {
 }
 
 async function main() {
+  for (const file of ['src/components/reports/DCARReport.jsx', 'src/components/reports/DeliveredOrdersTableReport.jsx', 'src/app/admin/(reports)/reports/completed-orders/page.jsx']) {
+    const result = ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
+      fileName: file, reportDiagnostics: true, compilerOptions: { jsx: ts.JsxEmit.ReactJSX },
+    });
+    assert.equal((result.diagnostics || []).filter(item => item.category === ts.DiagnosticCategory.Error).length, 0, `JSX syntax: ${file}`);
+  }
   let requested;
   let apiResponse = { ResponseCode: 1, ResponseData: { Rows: [] } };
   const service = load('src/services/analyticsService.js', {
@@ -87,6 +93,8 @@ async function main() {
   find(ui.AnalyticsCsvButton).props.onClick();
   assert.equal(exported[2].length, 1);
   assert.equal(exported[1].find(column => column.key === 'Paid').value(exported[2][0]), 4);
+  assert.equal(exported[1].find(column => column.key === 'Paid').label, 'Completed');
+  assert.match(find(ui.AnalyticsSection).props.description, /paid directly to vendor/);
   assert.equal(find(ui.AnalyticsReportHeader).props.title, 'CS API');
   assert.equal(reportRequest.dcCode, 'A,B');
   assert.equal(reportRequest.vendorCode, 'V');

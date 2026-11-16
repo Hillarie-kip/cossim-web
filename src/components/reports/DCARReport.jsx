@@ -65,7 +65,7 @@ export default function DCARReport() {
     {label}{sort.key === key ? (sort.descending ? " ↓" : " ↑") : ""}</button>;
   const columns = [
     { key: "DCName", label: sortHeading("DCName", "Distribution centre"), render: row => <div><strong>{row.DCName}</strong><small className="d-block text-muted">{row.DCCode}</small></div> },
-    ...[["HandedOver", "Handed over"], ["Delivered", "Delivered"], ["Paid", "Paid"], ["ReturnedFailed", "Returned + failed"]]
+    ...[["HandedOver", "Handed over"], ["Delivered", "Delivered"], ["Paid", "Completed"], ["ReturnedFailed", "Returned + failed"]]
       .map(([key, label]) => ({ key, label: sortHeading(key, label), align: "end", render: row => formatReportNumber(row[key]) })),
     { key: "SuccessRate", label: sortHeading("SuccessRate", "Success rate"), align: "end", render: row => <strong>{formatReportPercent(row.SuccessRate)}</strong> },
     { key: "AverageHours", label: sortHeading("AverageHours", "Avg time"), align: "end", render: row => hours(row.AverageHours) },
@@ -73,7 +73,7 @@ export default function DCARReport() {
   ];
   const exportCsv = () => downloadReportCsv(`cs-api-${applied.startDate || "all"}-${applied.endDate || "all"}.csv`,
     [["DCCode", "DC code"], ["DCName", "Distribution centre"], ["HandedOver", "Handed over"], ["Delivered", "Delivered"],
-      ["Paid", "Paid"], ["ReturnedFailed", "Returned + failed"], ["SuccessRate", "Success rate (%)"],
+      ["Paid", "Completed"], ["ReturnedFailed", "Returned + failed"], ["SuccessRate", "Success rate (%)"],
       ["AverageHours", "Average time (hours)"], ["CODCarried", "COD carried (KES)"]].map(([key, label]) => ({ key, label, value: row => row[key] })), visibleRows);
 
   return <div className="content analytics-report-page">
@@ -81,16 +81,16 @@ export default function DCARReport() {
       onRefresh={reload} refreshing={loading} />
     {loading ? <AnalyticsLoadingState /> : error ? <AnalyticsErrorState message={error} onRetry={reload} /> : <>
       <div className="analytics-metric-grid">
-        <AnalyticsMetricCard icon={Package} label="Handed over" value={formatReportNumber(summary.HandedOver)} helper="Distinct parcels in the selected cohort" />
-        <AnalyticsMetricCard icon={Truck} label="Delivered" value={formatReportNumber(summary.Delivered)} helper={`${formatReportNumber(summary.Paid)} fully paid orders`} />
-        <AnalyticsMetricCard icon={Target} label="Success rate" value={formatReportPercent(summary.SuccessRate)} helper="Paid orders ÷ handed over × 100" />
+        <AnalyticsMetricCard icon={Package} label="Handed over" value={formatReportNumber(summary.HandedOver)} helper="Confirmed forward handovers for orders in this period" />
+        <AnalyticsMetricCard icon={Truck} label="Delivered" value={formatReportNumber(summary.Delivered)} helper={`${formatReportNumber(summary.Paid)} completed orders, including paid to vendor`} />
+        <AnalyticsMetricCard icon={Target} label="Success rate" value={formatReportPercent(summary.SuccessRate)} helper="Completed orders / handed over x 100" />
         <AnalyticsMetricCard icon={DollarSign} label="COD carried" value={formatReportCurrency(summary.CODCarried)} helper={`Average delivery time: ${hours(summary.AverageHours)}`} />
       </div>
-      <AnalyticsSection title="Where CoSSim wins and where it bleeds" description="Success rate = paid orders ÷ parcels handed over × 100. Paid means delivered with verified COD payments covering the full COD amount."
+      <AnalyticsSection title="Where CoSSim wins and where it bleeds" description="Completed includes payment received, zero-COD completion, and paid directly to vendor, even without a customer payment record."
         action={<AnalyticsCsvButton onClick={exportCsv} disabled={!visibleRows.length} />}>
         <div className="mb-3"><input className="form-control" aria-label="Search distribution centres" placeholder="Search distribution centres…" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <AnalyticsTable columns={columns} rows={visibleRows} rowKey={row => row.DCCode} initialPageSize={25} emptyText="No handed-over parcels match these filters." />
-        <p className="text-muted small mt-3 mb-0">Each parcel is attributed to its latest confirmed forward handover. Dates filter that handover, while outcomes show the current position. Pending consolidations and return handovers are excluded. Average time uses recorded deliveries after handover; — means no timed deliveries. COD carried is the cohort’s total COD value. Zero-COD orders do not count as paid. Returned + failed counts current return stages and lost orders; a previously delivered parcel can also be returned.</p>
+        <p className="text-muted small mt-3 mb-0">Dates filter order creation, matching the direct orders view and the default Order Date filter in Completed Orders. Distribution centres follow the latest handover destination, including returns, with tracking and order destination as fallbacks. Handed over counts orders with a confirmed forward handover; pending batches alone do not qualify. Delivered includes current delivered and completed orders. Completed uses the same completion status as Completed Orders, including zero-COD and paid-to-vendor orders. Average time uses recorded deliveries after the latest confirmed forward handover; a dash means no timed deliveries. COD carried covers handed-over orders. Returned + failed counts current return stages and lost orders.</p>
         <p className="text-muted small mt-2 mb-0">Totals cover all DCs matching the applied filters; search narrows the table and CSV export.</p>
       </AnalyticsSection>
     </>}
