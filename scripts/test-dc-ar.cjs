@@ -8,7 +8,7 @@ const React = require('react');
 const root = path.resolve(__dirname, '..');
 function load(file, dependencies = {}) {
   const code = ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
-    fileName: file, compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+    fileName: file, compilerOptions: { target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
   }).outputText;
   const exports = {};
   vm.runInNewContext(code, { exports, console, URLSearchParams,
@@ -17,7 +17,7 @@ function load(file, dependencies = {}) {
 }
 
 async function main() {
-  for (const file of ['src/components/reports/DCARReport.jsx', 'src/components/reports/DeliveredOrdersTableReport.jsx', 'src/app/admin/(reports)/reports/completed-orders/page.jsx']) {
+  for (const file of ['src/components/reports/AnalyticsReportUI.jsx', 'src/components/reports/DCARReport.jsx', 'src/components/reports/DeliveredOrdersTableReport.jsx', 'src/app/admin/(reports)/reports/completed-orders/page.jsx']) {
     const result = ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
       fileName: file, reportDiagnostics: true, compilerOptions: { jsx: ts.JsxEmit.ReactJSX },
     });
@@ -50,7 +50,7 @@ async function main() {
     'AnalyticsLoadingState', 'AnalyticsMetricCard', 'AnalyticsReportHeader', 'AnalyticsSection', 'AnalyticsTable']
     .map(name => [name, Object.defineProperty(() => null, 'displayName', { value: name })]));
   const fixtures = [
-    { DCCode: 'A', DCName: 'Alpha', HandedOver: 10, Delivered: 8, Paid: 4, ReturnedFailed: 1, SuccessRate: 40, AverageHours: 12, CODCarried: 1000 },
+    { DCCode: 'A', DCName: 'Alpha', HandedOver: 10, Delivered: 8, Paid: 4, ReturnedFailed: 1, SuccessRate: 40, AverageHours: 12, VendorCreated: 12, ReceivedKCS: 10, DispatchedDC: 10, ReceivedDC: 8, DCDelivered: 6, AttemptedThree: 3, DCReturned: 1, FailedDC: 2, ReturnedKCS: 1, AcceptedVendor: 0, Losses: 2, Recovered: 1, CODCarried: 1000 },
     { DCCode: 'B', DCName: 'Beta', HandedOver: 20, Delivered: 10, Paid: 8, ReturnedFailed: 2, SuccessRate: 40, AverageHours: null, CODCarried: 2000 },
   ];
   const utils = load('src/utils/analyticsReportUtils.js');
@@ -85,17 +85,23 @@ async function main() {
   table.props.columns.find(column => column.key === 'DCName').label.props.onClick();
   render();
   assert.equal(find(ui.AnalyticsTable).props.rows[0].DCCode, 'A');
-  const avg = find(ui.AnalyticsTable).props.columns.find(column => column.key === 'AverageHours');
-  assert.equal(avg.render(fixtures[1]), '—');
+
   elements(tree).find(node => node.props['aria-label'] === 'Search distribution centres').props.onChange({ target: { value: 'alpha' } });
   render();
   assert.equal(find(ui.AnalyticsTable).props.rows.length, 1);
   find(ui.AnalyticsCsvButton).props.onClick();
   assert.equal(exported[2].length, 1);
-  assert.equal(exported[1].find(column => column.key === 'Paid').value(exported[2][0]), 4);
-  assert.equal(exported[1].find(column => column.key === 'Paid').label, 'Completed');
-  assert.match(find(ui.AnalyticsSection).props.description, /paid directly to vendor/);
-  assert.equal(find(ui.AnalyticsReportHeader).props.title, 'CS API');
+  assert.equal(exported[1].find(column => column.key === 'AwaitingKCS').value(exported[2][0]), 2);
+  assert.equal(find(ui.AnalyticsReportHeader).props.title, 'CS KPI');
+  const expected = { dispatch: [['AwaitingKCS', 2], ['AwaitingDC', 2]], cx: [['UndeliveredDC', 2], ['BelowThree', 5]], reverse: [['AwaitingReturnKCS', 1], ['AwaitingAcceptance', 1]], finance: [['Uncompleted', 4], ['Unrecovered', 1]], pus: [['PUSUndelivered', 2], ['PUSOutstanding', 1]] };
+  for (const [key, measures] of Object.entries(expected)) {
+    find(ui.AnalyticsReportHeader).props.reportTabs.find(tab => tab.key === key).props.onClick();
+    render();
+    find(ui.AnalyticsCsvButton).props.onClick();
+    for (const [metric, value] of measures) {
+      assert.equal(exported[1].find(column => column.key === metric).value(exported[2][0]), value, `${key}: ${metric}`);
+    }
+  }
   assert.equal(reportRequest.dcCode, 'A,B');
   assert.equal(reportRequest.vendorCode, 'V');
   assert.equal(reportRequest.startDate, '2026-10-01');
@@ -116,6 +122,6 @@ async function main() {
   await new Promise(resolve => setImmediate(resolve));
   render();
   assert.equal(find(ui.AnalyticsErrorState).props.message, 'Network unavailable');
-  console.log('PASS: API query encoding/errors, loading, response casing, cohort ordering, sorting, search, CSV values, missing timing, date validation and request failure.');
+  console.log('PASS: API query encoding/errors, loading, response casing, sorting, search, five KPI tabs, ten calculations, CSV values, date validation and request failure.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

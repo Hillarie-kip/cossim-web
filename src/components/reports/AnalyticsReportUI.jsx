@@ -23,6 +23,7 @@ export const AnalyticsReportHeader = ({
   activeReport,
   onRefresh,
   refreshing,
+  reportTabs,
   reportBasePath = "/admin/reports",
 }) => (
   <div className="analytics-report-header">
@@ -39,9 +40,11 @@ export const AnalyticsReportHeader = ({
     <div className="analytics-report-header-actions">
       <nav
         className="analytics-report-switcher"
-        aria-label="Analytics reports"
+        aria-label={reportTabs ? "KPI categories" : "Analytics reports"}
+        role={reportTabs ? "tablist" : undefined}
       >
-        {reportBasePath === "/admin/reports" && <Link to={`${reportBasePath}/dc-ar`} className={activeReport === "dc-ar" ? "active" : ""}>CS API</Link>}
+        {reportTabs || <>
+        {reportBasePath === "/admin/reports" && <Link to={`${reportBasePath}/dc-ar`} className={activeReport === "dc-ar" ? "active" : ""}>CS KPI</Link>}
         <Link
           to={`${reportBasePath}/shipment-orders`}
           className={
@@ -74,6 +77,7 @@ export const AnalyticsReportHeader = ({
         >
           SLA report
         </Link>
+        </>}
       </nav>
 
       <Button

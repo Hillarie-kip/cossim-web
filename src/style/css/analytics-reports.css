@@ -52,7 +52,8 @@
   background: #fff;
 }
 
-.analytics-report-switcher a {
+.analytics-report-switcher a,
+.analytics-report-switcher button {
   padding: 7px 11px;
   border-radius: 6px;
   color: #475467;
@@ -60,6 +61,8 @@
   font-weight: 700;
 }
 
+.analytics-report-switcher button:hover,
+.analytics-report-switcher button.active,
 .analytics-report-switcher a:hover,
 .analytics-report-switcher a.active {
   background: var(--report-orange-soft);
@@ -627,7 +630,8 @@
     width: 100%;
   }
 
-  .analytics-report-switcher a {
+  .analytics-report-switcher a,
+.analytics-report-switcher button {
     flex: 1 1 50%;
     text-align: center;
   }
@@ -664,3 +668,5 @@
 @media (prefers-reduced-motion: reduce) {
   .analytics-spin { animation: none; }
 }
+
+.analytics-report-switcher button { border: 0; background: transparent; cursor: pointer; font-family: inherit; }

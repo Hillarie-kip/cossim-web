@@ -1,19 +1,42 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DollarSign, Package, Target, Truck } from "feather-icons-react";
+import { Target } from "feather-icons-react";
 import { getDCARReport } from "@/services/analyticsService";
 import { useGlobalFilters } from "@/contexts/GlobalFiltersContext";
 import { AnalyticsCsvButton, AnalyticsErrorState,
   AnalyticsLoadingState, AnalyticsMetricCard, AnalyticsReportHeader, AnalyticsSection,
   AnalyticsTable } from "@/components/reports/AnalyticsReportUI";
-import { downloadReportCsv, formatReportCurrency, formatReportNumber, formatReportPercent,
+import { downloadReportCsv, formatReportNumber,
   readAnalyticsValue as read } from "@/utils/analyticsReportUtils";
 import "@/style/css/analytics-reports.css";
 
+const categories = [
+  { key: "dispatch", label: "Dispatch KPI", measures: [
+    { key: "AwaitingKCS", label: "Awaiting receipt at KCS", parts: [["VendorCreated", "Vendor created"], ["ReceivedKCS", "Less received at KCS"]] },
+    { key: "AwaitingDC", label: "Awaiting receipt at DC", parts: [["DispatchedDC", "Dispatched to DC"], ["ReceivedDC", "Less received at DC"]] },
+  ] },
+  { key: "cx", label: "CX KPI", measures: [
+    { key: "UndeliveredDC", label: "Not delivered at DC", parts: [["ReceivedDC", "Received at DC"], ["DCDelivered", "Less delivered at DC"]] },
+    { key: "BelowThree", label: "Below three attempts", parts: [["ReceivedDC", "Received at DC"], ["AttemptedThree", "Less at least 3 attempts"]] },
+  ] },
+  { key: "reverse", label: "Reverse KPI", measures: [
+    { key: "AwaitingReturnKCS", label: "Awaiting return to KCS", parts: [["FailedDC", "Failed at DC"], ["ReturnedKCS", "Less returned to KCS"]] },
+    { key: "AwaitingAcceptance", label: "Awaiting vendor acceptance", parts: [["ReturnedKCS", "Received at KCS"], ["AcceptedVendor", "Less accepted by vendor"]] },
+  ] },
+  { key: "finance", label: "Finance KPI", measures: [
+    { key: "Uncompleted", label: "Delivered, not completed", parts: [["Delivered", "Delivered orders"], ["Paid", "Less completed orders"]] },
+    { key: "Unrecovered", label: "Unrecovered losses", parts: [["Losses", "Losses"], ["Recovered", "Less recovered"]] },
+  ] },
+  { key: "pus", label: "PUS KPI", measures: [
+    { key: "PUSUndelivered", label: "Not delivered at PUS", parts: [["ReceivedDC", "Received at DC"], ["DCDelivered", "Less delivered at DC"]] },
+    { key: "PUSOutstanding", label: "Outstanding at PUS", parts: [["ReceivedDC", "Received at DC"], ["DCDelivered", "Less delivered"], ["DCReturned", "Less returned"]] },
+  ] },
+];
+const metricFields = [...new Set(categories.flatMap(category => category.measures.flatMap(measure => measure.parts.map(([key]) => key))))];
+const balance = (row, measure) => measure.parts.reduce((total, [key], index) => total + (index ? -1 : 1) * Number(row[key] || 0), 0);
 const normalizeRow = (row) => Object.fromEntries(["DCCode", "DCName", "HandedOver", "Delivered", "Paid",
-  "ReturnedFailed", "SuccessRate", "AverageHours", "TimedDeliveries", "CODCarried"].map(key => [key, read(row, key, null)]));
-const hours = value => value == null ? "—" : `${formatReportNumber(value, 2)}h`;
+  "ReturnedFailed", "SuccessRate", "AverageHours", "TimedDeliveries", "CODCarried", ...metricFields].map(key => [key, read(row, key, null)]));
 
 export default function DCARReport() {
   const { filters } = useGlobalFilters();
@@ -23,6 +46,8 @@ export default function DCARReport() {
     vendorCode: filters.vendorCode || "",
     dcCode: filters.dcCodes || filters.dcCode || "__NONE__",
   }), [filters.startDate, filters.endDate, filters.vendorCode, filters.dcCodes, filters.dcCode]);
+  const [categoryKey, setCategoryKey] = useState("dispatch");
+  const category = categories.find(item => item.key === categoryKey);
   const [refresh, setRefresh] = useState(0);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +67,7 @@ export default function DCARReport() {
       return () => { active = false; };
     }
     getDCARReport(applied).then(result => { if (active) setData(result); })
-      .catch(reason => { if (active) setError(reason.message || "Unable to load CS API."); })
+      .catch(reason => { if (active) setError(reason.message || "Unable to load CS KPI."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [applied, refresh]);
@@ -63,35 +88,32 @@ export default function DCARReport() {
     onClick={() => setSort(current => ({ key, descending: current.key === key ? !current.descending : key !== "DCName" }))}
     aria-label={`Sort by ${label}${sort.key === key ? (sort.descending ? ", descending" : ", ascending") : ""}`}>
     {label}{sort.key === key ? (sort.descending ? " ↓" : " ↑") : ""}</button>;
+  const calculationColumns = category.measures.flatMap(measure => [
+    ...measure.parts.map(([key, label], index) => ({ key: measure.key + key, label, value: row => row[key],
+      render: row => formatReportNumber(row[key]), align: "end" })),
+    { key: measure.key, label: measure.label, value: row => balance(row, measure),
+      render: row => <strong>{formatReportNumber(balance(row, measure))}</strong>, align: "end" },
+  ]);
   const columns = [
-    { key: "DCName", label: sortHeading("DCName", "Distribution centre"), render: row => <div><strong>{row.DCName}</strong><small className="d-block text-muted">{row.DCCode}</small></div> },
-    ...[["HandedOver", "Handed over"], ["Delivered", "Delivered"], ["Paid", "Completed"], ["ReturnedFailed", "Returned + failed"]]
-      .map(([key, label]) => ({ key, label: sortHeading(key, label), align: "end", render: row => formatReportNumber(row[key]) })),
-    { key: "SuccessRate", label: sortHeading("SuccessRate", "Success rate"), align: "end", render: row => <strong>{formatReportPercent(row.SuccessRate)}</strong> },
-    { key: "AverageHours", label: sortHeading("AverageHours", "Avg time"), align: "end", render: row => hours(row.AverageHours) },
-    { key: "CODCarried", label: sortHeading("CODCarried", "COD carried"), align: "end", render: row => formatReportCurrency(row.CODCarried) },
+    { key: "DCName", label: sortHeading("DCName", categoryKey === "pus" ? "PUS / distribution centre" : "Distribution centre"), render: row => <div><strong>{row.DCName}</strong><small className="d-block text-muted">{row.DCCode}</small></div> },
+    ...calculationColumns,
   ];
-  const exportCsv = () => downloadReportCsv(`cs-api-${applied.startDate || "all"}-${applied.endDate || "all"}.csv`,
-    [["DCCode", "DC code"], ["DCName", "Distribution centre"], ["HandedOver", "Handed over"], ["Delivered", "Delivered"],
-      ["Paid", "Completed"], ["ReturnedFailed", "Returned + failed"], ["SuccessRate", "Success rate (%)"],
-      ["AverageHours", "Average time (hours)"], ["CODCarried", "COD carried (KES)"]].map(([key, label]) => ({ key, label, value: row => row[key] })), visibleRows);
+  const exportCsv = () => downloadReportCsv(`cs-kpi-${categoryKey}-${applied.startDate || "all"}-${applied.endDate || "all"}.csv`,
+    [{ key: "DCCode", label: "DC code", value: row => row.DCCode }, { key: "DCName", label: "Distribution centre", value: row => row.DCName }, ...calculationColumns], visibleRows);
 
   return <div className="content analytics-report-page">
-    <AnalyticsReportHeader title="CS API" activeReport="dc-ar" description="Where CoSSim wins and where it bleeds — delivery and cash reconciliation by distribution centre."
+    <AnalyticsReportHeader title="CS KPI" activeReport="dc-ar" description="Operational measurables and their calculations by KPI category and distribution centre."
+      reportTabs={categories.map(item => <button type="button" role="tab" key={item.key} aria-selected={categoryKey === item.key} className={categoryKey === item.key ? "active" : ""} onClick={() => setCategoryKey(item.key)}>{item.label}</button>)}
       onRefresh={reload} refreshing={loading} />
     {loading ? <AnalyticsLoadingState /> : error ? <AnalyticsErrorState message={error} onRetry={reload} /> : <>
       <div className="analytics-metric-grid">
-        <AnalyticsMetricCard icon={Package} label="Handed over" value={formatReportNumber(summary.HandedOver)} helper="Confirmed forward handovers for orders in this period" />
-        <AnalyticsMetricCard icon={Truck} label="Delivered" value={formatReportNumber(summary.Delivered)} helper={`${formatReportNumber(summary.Paid)} completed orders, including paid to vendor`} />
-        <AnalyticsMetricCard icon={Target} label="Success rate" value={formatReportPercent(summary.SuccessRate)} helper="Completed orders / handed over x 100" />
-        <AnalyticsMetricCard icon={DollarSign} label="COD carried" value={formatReportCurrency(summary.CODCarried)} helper={`Average delivery time: ${hours(summary.AverageHours)}`} />
+        {category.measures.map(measure => <AnalyticsMetricCard key={measure.key} icon={Target} label={measure.label}
+          value={formatReportNumber(balance(summary, measure))} helper={measure.parts.map(([, label]) => label).join(" − ").replaceAll("Less ", "")} />)}
       </div>
-      <AnalyticsSection title="Where CoSSim wins and where it bleeds" description="Completed includes payment received, zero-COD completion, and paid directly to vendor, even without a customer payment record."
+      <AnalyticsSection title={category.label}
         action={<AnalyticsCsvButton onClick={exportCsv} disabled={!visibleRows.length} />}>
         <div className="mb-3"><input className="form-control" aria-label="Search distribution centres" placeholder="Search distribution centres…" value={search} onChange={event => setSearch(event.target.value)} /></div>
-        <AnalyticsTable columns={columns} rows={visibleRows} rowKey={row => row.DCCode} initialPageSize={25} emptyText="No handed-over parcels match these filters." />
-        <p className="text-muted small mt-3 mb-0">Dates filter order creation, matching the direct orders view and the default Order Date filter in Completed Orders. Distribution centres follow the latest handover destination, including returns, with tracking and order destination as fallbacks. Handed over counts orders with a confirmed forward handover; pending batches alone do not qualify. Delivered includes current delivered and completed orders. Completed uses the same completion status as Completed Orders, including zero-COD and paid-to-vendor orders. Average time uses recorded deliveries after the latest confirmed forward handover; a dash means no timed deliveries. COD carried covers handed-over orders. Returned + failed counts current return stages and lost orders.</p>
-        <p className="text-muted small mt-2 mb-0">Totals cover all DCs matching the applied filters; search narrows the table and CSV export.</p>
+        <AnalyticsTable columns={columns} rows={visibleRows} rowKey={row => row.DCCode} initialPageSize={25} emptyText="No orders match these filters." />
       </AnalyticsSection>
     </>}
   </div>;
