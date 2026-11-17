@@ -44,7 +44,7 @@ export const AnalyticsReportHeader = ({
         role={reportTabs ? "tablist" : undefined}
       >
         {reportTabs || <>
-        {reportBasePath === "/admin/reports" && <Link to={`${reportBasePath}/dc-ar`} className={activeReport === "dc-ar" ? "active" : ""}>CS KPI</Link>}
+        {reportBasePath === "/admin/reports" && <Link to={`${reportBasePath}/dc-ar`} className={activeReport === "dc-ar" ? "active" : ""}>OPS KPI</Link>}
         <Link
           to={`${reportBasePath}/shipment-orders`}
           className={
