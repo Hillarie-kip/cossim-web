@@ -31,7 +31,7 @@ export default function DCARReport() {
       return () => { active = false; };
     }
     getDCARReport(applied).then(result => {
-      if (!Array.isArray(read(result, "DispatchRows", null))) {
+      if (!["DispatchRows", "ReverseRows", "HubReturnRows"].every(key => Array.isArray(read(result, key, null)))) {
         throw new Error("The running API does not yet support the hub report. Restart or deploy the updated API, then refresh.");
       }
       if (active) { setData(result); setRefreshedAt(new Date()); }
@@ -40,10 +40,11 @@ export default function DCARReport() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [applied, refresh]);
-  const rows = useMemo(() => (read(data, categoryKey === "dispatch" ? "DispatchRows" : "Rows", []) || []).map(normalizeRow), [data, categoryKey]);
-  const dcRows = rows.filter(row => !row.isHub), hubs = rows.filter(row => row.isHub);
-  const dc = sumRows(dcRows), hub = sumRows(hubs), all = sumRows(rows);
-  const eligible = ["dispatch", "reverse"].includes(categoryKey) ? rows : dcRows;
+  const rows = useMemo(() => (read(data, categoryKey === "dispatch" ? "DispatchRows" : categoryKey === "reverse" ? "ReverseRows" : "Rows", []) || []).map(normalizeRow), [data, categoryKey]);
+  const dcRows = rows.filter(row => !row.isHub);
+  const hubs = categoryKey === "reverse" ? (read(data, "HubReturnRows", []) || []).map(normalizeRow) : rows.filter(row => row.isHub);
+  const dc = sumRows(dcRows), hub = sumRows(hubs);
+  const eligible = categoryKey === "dispatch" ? rows : dcRows;
   const matches = row => `${row.DCName} ${row.DCCode}`.toLowerCase().includes(search.trim().toLowerCase());
   const visible = eligible.filter(matches).sort((a, b) => {
     const left = a[sort.key], right = b[sort.key];
@@ -56,7 +57,7 @@ export default function DCARReport() {
   const cards = {
     dispatch: [["Awaiting hub pickup", hub.AwaitingHQ, "Vendor confirmed − picked by hub"], ["Awaiting receipt at DC", hub.AwaitingDC, "Dispatched by hubs − received at DC"], ["Received at DC", hub.DCRate, "Received at DC ÷ dispatched by hubs", "rate"], ["Hubs with pending at DC", hubs.filter(row => row.AwaitingDC > 0).length, `Of ${hubs.length} hubs`]],
     cx: [["Not delivered at DCs", dc.Pending, "Received at DC − delivered · excludes hub"], ["Delivery success", dc.Success, "Delivered ÷ received", "rate"], ["Attempted 3+ times", dc.AttemptedThree, "Reported attempts; verify pending-only scope"], ["Below three attempts", dc.BelowThree, "Pending delivery − attempted 3+ times"]],
-    reverse: [["Awaiting return to HQ", all.ReturnPending, "Failed − returned to HQ"], ["Returned to HQ from DCs", dc.ReturnRate, "Returned ÷ failed · excludes hub", "rate"], ["Awaiting vendor acceptance", hub.AcceptancePending, "Received at HQ − accepted by vendor"], ["Vendor acceptance rate", hub.AcceptanceRate, "Accepted ÷ received at HQ", "rate"]],
+    reverse: [["Awaiting return to HQ", dc.ReturnPending, "Failed at DCs − returned to HQ"], ["Returned to HQ from DCs", dc.ReturnRate, "Returned ÷ failed · excludes hub", "rate"], ["Awaiting vendor acceptance", hub.AcceptancePending, "Received at HQ − accepted by vendor"], ["Vendor acceptance rate", hub.AcceptanceRate, "Accepted ÷ received at HQ", "rate"]],
     finance: [["Delivered, not completed", dc.Uncompleted, "Delivered − completed"], ["Completion rate", dc.CompletionRate, "Completed ÷ delivered", "rate"], ["Stations with open orders", dcRows.filter(row => row.Uncompleted > 0).length, `Of ${dcRows.length} distribution centres`], ["Unrecovered losses", dc.Unrecovered, "Losses − recovered"]],
     pus: [["Outstanding at PUS", dc.Outstanding, "Received − delivered − returned"], ["Resolved", dc.Resolved, "Delivered or returned ÷ received", "rate"], ["Delivered from PUS", dc.Success, "Delivered ÷ received", "rate"], ["Returned from PUS", dc.ReturnedRate, "Returned ÷ received", "rate"]],
   }[categoryKey];
@@ -85,9 +86,8 @@ export default function DCARReport() {
         <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th rowSpan={2} scope="col">{heading("DCName", categoryKey === "dispatch" ? "Hub" : categoryKey === "pus" ? "PUS / distribution centre" : "Distribution centre")}</th>{category.groups.map(([label, items]) => <th key={label} colSpan={items.length} scope="colgroup">{label}</th>)}</tr><tr>{columns.map(column => <th scope="col" key={column.key}>{heading(column.key, column.label)}</th>)}</tr></thead><tbody>
           {visible.some(row => row.isHub) && <><tr className={styles.group}><th colSpan={columns.length + 1}>Hub</th></tr>{visible.filter(row => row.isHub).map(renderRow)}</>}
           {categoryKey !== "dispatch" && <><tr className={styles.group}><th colSpan={columns.length + 1}>Distribution centres</th></tr>{visible.filter(row => !row.isHub).map(renderRow)}</>}
-          {categoryKey === "reverse" && visible.some(row => !row.isHub) && <tr className={styles.subtotal}><th scope="row">Subtotal · DCs</th>{columns.map(column => cell(sumRows(visible.filter(row => !row.isHub)), column))}</tr>}
           {!visible.length && <tr><td colSpan={columns.length + 1}>No orders match these filters.</td></tr>}
-        </tbody>{visible.length > 0 && <tfoot><tr><th scope="row">{search ? "Filtered total" : "Total"}{!["dispatch", "reverse"].includes(categoryKey) ? " (excl. hub)" : ""}</th>{columns.map(column => cell(totals, column))}</tr></tfoot>}</table></div>
+        </tbody>{visible.length > 0 && <tfoot><tr><th scope="row">{search ? "Filtered total" : "Total"}{categoryKey !== "dispatch" ? " (excl. hub)" : ""}</th>{columns.map(column => cell(totals, column))}</tr></tfoot>}</table></div>
         <div className={styles.legend}><span className={styles.good}>0 · nothing pending</span><span className={styles.watch}>1–{categoryKey === "finance" ? "4" : "9"} · watch</span><span className={styles.danger}>{categoryKey === "finance" ? "5" : "10"}+ · act now</span><span>— unavailable · ⚠ check data</span></div>
         {categoryKey === "reverse" && hubs.filter(matches).length > 0 && <><h6 className={styles.subheading}>Reverse KPI · HQ → Vendor</h6><div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Location</th><th>Received at HQ</th><th>Accepted by vendor</th><th>% accepted</th><th>Pending</th></tr></thead><tbody>{hubs.filter(matches).map(row => <tr key={row.DCCode}><th scope="row">{row.DCName}<small>{row.DCCode} · hub</small></th>{[{ key: "ReturnedKCS" }, { key: "AcceptedVendor" }, { key: "AcceptanceRate", kind: "rate" }, { key: "AcceptancePending", kind: "pending" }].map(column => cell(row, column))}</tr>)}</tbody></table></div></>}
         <p className={styles.footnote}>Cards cover all stations in the applied filters. Table totals follow search results. Percentages use combined counts; unavailable figures are left blank.</p>
